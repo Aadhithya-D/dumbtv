@@ -568,8 +568,9 @@ public final class Home extends Activity {
         dim.setBackgroundColor(0x99000000);
         dim.setAlpha(0f);
         root.addView(dim, new FrameLayout.LayoutParams(MATCH, MATCH));
-        spotLp = new FrameLayout.LayoutParams(WRAP, WRAP);
+        spotLp = new FrameLayout.LayoutParams(MATCH, WRAP);
         spotLp.leftMargin = dp(56);
+        spotLp.rightMargin = dp(56);
         spotLp.topMargin = Math.round(screenH * 0.25f);
         root.addView(spot, spotLp);
 
@@ -1049,6 +1050,16 @@ public final class Home extends Activity {
     /** Where Apple TV style's first line of apps sits on the home screen, as a share of its height. */
     private static final float TV_ROW = 0.62f;
 
+    /**
+     * The first line's top on screen. With Peek on it sits lower, so only the top
+     * {@code dp(52)} of the next line (less the room a tile keeps for its name) shows above the bottom edge, as on Apple TV.
+     */
+    private int tvRowTop() {
+        int screenH = getResources().getDisplayMetrics().heightPixels;
+        if (!"on".equals(cfg.get(Config.PEEK))) return Math.round(screenH * TV_ROW);
+        return Math.max(Math.round(screenH * 0.5f), screenH - dp(52) - dp(18) - cardSize()[1]);
+    }
+
     /** The apps title's top margin that puts the first line of tiles at {@link #TV_ROW}. */
     private int tvShift() {
         int titleH = apps.title.getHeight();
@@ -1065,8 +1076,7 @@ public final class Home extends Activity {
             headH = head.getMeasuredHeight();
         }
         int firstTop = column.getPaddingTop() + headH + titleH + apps.grid.getPaddingTop();
-        int screenH = getResources().getDisplayMetrics().heightPixels;
-        return Math.max(0, Math.round(screenH * TV_ROW) - firstTop);
+        return Math.max(0, tvRowTop() - firstTop);
     }
 
     private int lineOf(Tile t) {
@@ -1314,7 +1324,7 @@ public final class Home extends Activity {
                 && !"on".equals(cfg.get(Config.ALL_APPS)) ? View.VISIBLE : View.GONE);
         spotTitle.setTextSize(tv ? 30 : 44);
         int screenH = getResources().getDisplayMetrics().heightPixels;
-        int spotTop = tv ? Math.round(screenH * TV_ROW) - dp(70) : Math.round(screenH * 0.25f);
+        int spotTop = tv ? tvRowTop() - dp(70) : Math.round(screenH * 0.25f);
         if (spotLp.topMargin != spotTop) {
             spotLp.topMargin = spotTop;
             spot.setLayoutParams(spotLp);
