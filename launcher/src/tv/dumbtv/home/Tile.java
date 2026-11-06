@@ -15,7 +15,8 @@ import android.view.View;
 
 /** A card drawn in one pass: banner, or icon plus name, or an input name; focus ring on top. */
 final class Tile extends View {
-    private static final float FOCUS_SCALE = 1.08f;
+    /** How much a focused tile grows; Spotlight raises it. UI thread. */
+    static float focusScale = 1.08f;
 
     final Item item;
     final String kind;
@@ -96,7 +97,7 @@ final class Tile extends View {
         super.onFocusChanged(focused, direction, previous);
         animate().cancel();
         if (focused) {
-            animate().scaleX(FOCUS_SCALE).scaleY(FOCUS_SCALE).setDuration(110).start();
+            animate().scaleX(focusScale).scaleY(focusScale).setDuration(110).start();
         } else {
             setScaleX(1f);
             setScaleY(1f);

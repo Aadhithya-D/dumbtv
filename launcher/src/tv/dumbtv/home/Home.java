@@ -13,6 +13,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
 import android.media.tv.TvInputManager;
 import android.net.Uri;
 import android.os.Build;
@@ -72,6 +73,11 @@ public final class Home extends Activity {
     private ImageView wall;
     private View shade;
     private View tint;
+    /** Spotlight: the focused app's colour as a glow in the top right, fading to near black. */
+    private GradientDrawable glow;
+    private LinearLayout spot;
+    private TextView spotTitle;
+    private static final int SPOT_BASE = 0xFF0A0A0D;
     private LinearLayout head;
     private TextView clock, date;
     private Meter meter;
@@ -517,6 +523,29 @@ public final class Home extends Activity {
         tint = new View(this);
         root.addView(tint, new FrameLayout.LayoutParams(MATCH, MATCH));
 
+        int screenW = getResources().getDisplayMetrics().widthPixels;
+        int screenH = getResources().getDisplayMetrics().heightPixels;
+        glow = new GradientDrawable();
+        glow.setGradientType(GradientDrawable.RADIAL_GRADIENT);
+        glow.setGradientCenter(0.78f, 0.12f);
+        glow.setGradientRadius(screenW * 0.9f);
+        glow.setColors(new int[] {SPOT_BASE, SPOT_BASE, SPOT_BASE});
+        spot = new LinearLayout(this);
+        spot.setOrientation(LinearLayout.VERTICAL);
+        spot.setVisibility(View.GONE);
+        spotTitle = Ui.text(this, 60, Ui.TEXT, android.graphics.Typeface.DEFAULT_BOLD);
+        spotTitle.setLetterSpacing(-0.02f);
+        spotTitle.setSingleLine(true);
+        TextView spotHint = Ui.text(this, 15, Ui.MUTED, Ui.MEDIUM);
+        spotHint.setText("OK to open  ·  hold OK for options");
+        spotHint.setPadding(dp(3), dp(2), 0, 0);
+        spot.addView(spotTitle);
+        spot.addView(spotHint);
+        FrameLayout.LayoutParams spotLp = new FrameLayout.LayoutParams(WRAP, WRAP);
+        spotLp.leftMargin = dp(56);
+        spotLp.topMargin = Math.round(screenH * 0.25f);
+        root.addView(spot, spotLp);
+
         ScrollView scroll = new ScrollView(this) {
             /** Scrolls in whole rows: the focused row shows complete, and a row starts at the top edge. */
             @Override
@@ -883,6 +912,7 @@ public final class Home extends Activity {
                     lastFocusedKind = tile.kind;
                     lastIds.put(tile.kind, tile.item.id);
                     focusBackground(tile.item);
+                    spotlight(tile);
                 }
             });
             t.setOnLongClickListener(v -> {
@@ -982,7 +1012,8 @@ public final class Home extends Activity {
 
     private void focusBackground(Item it) {
         String mode = cfg.get(Config.BACKGROUND);
-        if (!resumed || !"adaptive".equals(mode) && !"adaptive-tint".equals(mode)) return;
+        if (!resumed || !"adaptive".equals(mode) && !"adaptive-tint".equals(mode)
+                && !"spotlight".equals(mode)) return;
         if ("adaptive-tint".equals(mode) && !tintWallpaper) return;
         if (it != null && it.info != null && it.backgroundColor == 0 && !it.colorRequested
                 && (it.banner != null || it.icon != null)) {
@@ -1013,7 +1044,25 @@ public final class Home extends Activity {
     private void setAdaptiveColor(int color) {
         displayedColor = color;
         if ("adaptive-tint".equals(backgroundMode)) tint.setBackgroundColor(color);
-        else root.setBackgroundColor(color);
+        else if ("spotlight".equals(backgroundMode)) {
+            glow.setColors(new int[] {shade(color, 0.55f), shade(color, 0.2f), SPOT_BASE});
+        } else root.setBackgroundColor(color);
+    }
+
+    /** The colour darkened to `f` of its brightness, opaque. */
+    private static int shade(int color, float f) {
+        return Color.rgb(Math.round(Color.red(color) * f), Math.round(Color.green(color) * f),
+                Math.round(Color.blue(color) * f));
+    }
+
+    /** Spotlight's large name of the focused app, faded in when it changes. */
+    private void spotlight(Tile t) {
+        if (spot.getVisibility() != View.VISIBLE || !Catalog.isApp(t.kind)) return;
+        CharSequence name = Catalog.label(cfg, t.item);
+        if (name.toString().contentEquals(spotTitle.getText())) return;
+        spotTitle.setText(name);
+        spotTitle.setAlpha(0f);
+        spotTitle.animate().alpha(1f).setDuration(160).start();
     }
 
     private void stopColorAnimation() {
@@ -1127,6 +1176,11 @@ public final class Home extends Activity {
 
     private void background() {
         String mode = cfg.get(Config.BACKGROUND);
+        boolean spotMode = "spotlight".equals(mode);
+        // The big name sits above a single row of apps; a grid or All apps would run into it.
+        spot.setVisibility(spotMode && !"grid".equals(cfg.get(Config.LAYOUT))
+                && !"on".equals(cfg.get(Config.ALL_APPS)) ? View.VISIBLE : View.GONE);
+        Tile.focusScale = spotMode ? 1.12f : 1.08f;
         boolean image = "image".equals(mode) || "adaptive-tint".equals(mode);
         File file = image ? cfg.wallpaper() : null;
         tintWallpaper = "adaptive-tint".equals(mode) && file != null;
@@ -1140,6 +1194,19 @@ public final class Home extends Activity {
             }
             backgroundMode = mode;
             focusBackground(focusedItem());
+        } else if (spotMode) {
+            if (!mode.equals(backgroundMode)) {
+                stopColorAnimation();
+                targetColor = 0;
+                root.setBackgroundColor(SPOT_BASE);
+                tint.setBackground(glow);
+                backgroundMode = mode;
+                setAdaptiveColor(FocusColor.FALLBACK);
+            }
+            backgroundMode = mode;
+            focusBackground(focusedItem());
+            View f = getCurrentFocus();
+            if (f instanceof Tile) spotlight((Tile) f);
         } else if ("adaptive-tint".equals(mode)) {
             root.setBackgroundColor(file == null ? cfg.background() : Color.BLACK);
             if (!mode.equals(backgroundMode) || file == null) {
