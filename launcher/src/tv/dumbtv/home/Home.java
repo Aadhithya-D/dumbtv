@@ -586,7 +586,7 @@ public final class Home extends Activity implements Shelf.Listener {
         shelf.setVisibility(View.GONE);
         shelfLabel = Ui.text(this, 12, Ui.MUTED, Ui.MEDIUM);
         shelfLabel.setLetterSpacing(0.14f);
-        shelfLabel.setPadding(dp(2), 0, 0, dp(10));
+        shelfLabel.setPadding(SHELF_PAD() + dp(2), 0, 0, dp(10) - SHELF_PAD());
         shelf.addView(shelfLabel);
         shelfStrip = new LinearLayout(this) {
             /** Down returns to the app, Up goes to the buttons, and the ends hold the focus. */
@@ -608,6 +608,9 @@ public final class Home extends Activity implements Shelf.Listener {
         };
         shelfStrip.setClipChildren(false);
         shelfStrip.setClipToPadding(false);
+        // Room for a focused card's 8% growth and ring: the screen clips the shelf at its own
+        // edges, so the cards sit SHELF_PAD in from them.
+        shelfStrip.setPadding(SHELF_PAD(), SHELF_PAD(), SHELF_PAD(), SHELF_PAD());
         shelf.addView(shelfStrip);
         dim = new View(this);
         dim.setBackgroundColor(0x99000000);
@@ -619,8 +622,8 @@ public final class Home extends Activity implements Shelf.Listener {
         spotLp.topMargin = Math.round(screenH * 0.25f);
         root.addView(spot, spotLp);
         shelfLp = new FrameLayout.LayoutParams(MATCH, WRAP);
-        shelfLp.leftMargin = dp(56);
-        shelfLp.rightMargin = dp(56);
+        shelfLp.leftMargin = dp(56) - SHELF_PAD();
+        shelfLp.rightMargin = dp(56) - SHELF_PAD();
         root.addView(shelf, shelfLp);
 
         ScrollView scroll = new ScrollView(this) {
@@ -1150,6 +1153,10 @@ public final class Home extends Activity implements Shelf.Listener {
         }
     }
 
+    private int SHELF_PAD() {
+        return dp(12);
+    }
+
     /** Fills the Top Shelf with {@code owner}'s titles, or hides it when the app has none. */
     private void showShelf(Tile owner) {
         if (!tvStyle() || "off".equals(cfg.get(Config.SHELF))) {
@@ -1216,7 +1223,7 @@ public final class Home extends Activity implements Shelf.Listener {
         String app = Catalog.label(cfg, owner.item).toString().toUpperCase(Locale.ROOT);
         shelfLabel.setText((anyWatching ? "CONTINUE WATCHING" : "PINNED") + "  \u00b7  " + app);
         int spotTop = tvRowTop() - dp(84);
-        int top = spotTop - dp(12) - h - dp(10) - shelfLabel.getLineHeight() - dp(4);
+        int top = spotTop - dp(12) - SHELF_PAD() - h - dp(10) - shelfLabel.getLineHeight() - dp(4);
         if (shelfLp.topMargin != top) {
             shelfLp.topMargin = top;
             shelf.setLayoutParams(shelfLp);
