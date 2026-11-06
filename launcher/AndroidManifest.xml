@@ -13,6 +13,11 @@
          hold this, and Filter uses it to restart a filter whose process was killed (#162).
          A normal permission, granted at install, with no prompt. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Top Shelf: READ_LOGS (a development permission, granted with adb shell pm grant) lets
+         the shelf read the Continue Watching lists that Amazon's Fire TV Integration SDK logs,
+         and INTERNET fetches their pictures. -->
+    <uses-permission android:name="android.permission.READ_LOGS" />
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REORDER_TASKS"
         android:maxSdkVersion="27" />
 

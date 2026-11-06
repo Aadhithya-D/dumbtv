@@ -80,6 +80,9 @@ final class Config {
     static final Choice GREETING = new Choice("greeting", "Greeting", "on",
             new String[] {"on", "off"},
             new String[] {"On", "Off"});
+    static final Choice SHELF = new Choice("shelf", "Top Shelf", "on",
+            new String[] {"on", "off"},
+            new String[] {"On", "Off"});
     static final Choice ORDER = new Choice("order", "App order", "custom",
             new String[] {"custom", "recent"},
             new String[] {"Your order", "Recently used"});
@@ -126,7 +129,7 @@ final class Config {
     /** The banner of hand-picked titles from {@link Library}; hidden anyway while it has none. */
     static final Choice LIBRARY = new Choice("library", "Library banner", "on",
             new String[] {"on", "off"}, new String[] {"Shown", "Hidden"});
-    static final Choice[] CHOICES = {ACCENT, TILES, LAYOUT, STYLE, COLUMNS, PEEK, GREETING, ORDER, ALL_APPS, LABELS, CLOCK, MEMORY, INPUTS, SWITCH, BACKGROUND, DIM, ROTATE, LOCK, TILE_STYLE, LIBRARY};
+    static final Choice[] CHOICES = {ACCENT, TILES, LAYOUT, STYLE, COLUMNS, PEEK, GREETING, SHELF, ORDER, ALL_APPS, LABELS, CLOCK, MEMORY, INPUTS, SWITCH, BACKGROUND, DIM, ROTATE, LOCK, TILE_STYLE, LIBRARY};
 
     /** Folder of wallpapers, next to home.conf, that Background › Image file rotates through. */
     static final String WALLPAPERS = "wallpapers";
