@@ -232,7 +232,6 @@ public final class Home extends Activity implements Shelf.Listener {
         f.addDataScheme("package");
         registerReceiver(packages, f);
         Keeper.start(this);
-        Shelf.start(this);
         Shelf.setListener(this);
         if (tv != null) tv.registerCallback(inputWatch, ui);
         firstApps(catalog, times);
@@ -913,6 +912,8 @@ public final class Home extends Activity implements Shelf.Listener {
         date.setAllCaps(tv);
         date.setLetterSpacing(tv ? 0.16f : 0f);
         date.setPadding(tv ? 0 : dp(2), tv ? 0 : dp(8), 0, 0);
+        // The shelf's log reader and pin page only run while Top Shelf is on (in Apple TV style).
+        if (tv && !"off".equals(cfg.get(Config.SHELF))) Shelf.start(this);
         apps.grid.fixedColumns = tv ? Integer.parseInt(cfg.get(Config.COLUMNS)) : 0;
         apps.grid.tray = tv;
         if (!tv) {

@@ -46,6 +46,8 @@ public final class Guard extends AccessibilityService {
     static final String AMAZON = "com.amazon.tv.launcher";
     private static final String AMAZON_HOME = "com.amazon.tv.launcher.ui.HomeActivity_vNext";
     private static final long COVER_MAX_MS = 1500;
+    /** A HOME press covers before Amazon's home exists, so allow for its start too. */
+    private static final long KEY_COVER_MS = 2500;
     private static final long LAUNCH_FALLBACK_MS = 150;
     private static final long SHOWN_DELAY_MS = Build.VERSION.SDK_INT >= 34 ? 300 : 0;
 
@@ -101,10 +103,19 @@ public final class Guard extends AccessibilityService {
         homeWatch.start();
     }
 
+    /**
+     * The log line comes as the key is pressed, about 0.4 s before Amazon's home resumes and
+     * sends the window event the launch waits for. Launching here races Amazon's home, which
+     * can then land on top of ours; covering here instead makes the press answer at once, and
+     * the launch still follows Amazon's home as before. The cover drops when ours has drawn.
+     */
     private void homePressed() {
-        if (!paused) return;
-        paused = false;
-        launchWhenCovered();
+        if (paused) {
+            paused = false;
+            launchWhenCovered();
+            return;
+        }
+        cover(KEY_COVER_MS);
     }
 
     /** Lets Amazon's home stay on screen until the user leaves it. */
@@ -261,11 +272,15 @@ public final class Guard extends AccessibilityService {
 
     /** The overlay window exists from service start; a GONE root keeps its surface hidden. */
     private void cover() {
+        cover(COVER_MAX_MS);
+    }
+
+    private void cover(long maxMs) {
         if (cover == null) return;
         cover.setBackgroundColor(Config.get(this).background());
         cover.setVisibility(View.VISIBLE);
         handler.removeCallbacks(uncover);
-        handler.postDelayed(uncover, COVER_MAX_MS);
+        handler.postDelayed(uncover, maxMs);
     }
 
     private void uncover() {
