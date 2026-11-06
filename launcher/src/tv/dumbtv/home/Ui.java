@@ -26,7 +26,11 @@ final class Ui {
 
     /** Black on light accents, white on dark ones. */
     static int ink(int color) {
-        return Color.luminance(color) > 0.5f ? 0xFF000000 : 0xFFFFFFFF;
+        // Color.luminance needs Android 7.0; same weights on linearised sRGB.
+        double lum = 0.2126 * Math.pow(Color.red(color) / 255.0, 2.2)
+                + 0.7152 * Math.pow(Color.green(color) / 255.0, 2.2)
+                + 0.0722 * Math.pow(Color.blue(color) / 255.0, 2.2);
+        return lum > 0.5 ? 0xFF000000 : 0xFFFFFFFF;
     }
 
     static TextView text(Context c, float sp, int color, Typeface face) {

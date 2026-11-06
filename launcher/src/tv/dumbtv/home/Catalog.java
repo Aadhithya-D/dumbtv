@@ -57,14 +57,33 @@ final class Catalog {
         if (it.banner == null) it.icon = it.info.loadIcon(pm);
     }
 
+    /** TvInputInfo.isHidden and loadCustomLabel arrived in Android 7.0; Fire OS 5 has neither. */
+    private static boolean hidden(Context c, TvInputInfo in) {
+        if (android.os.Build.VERSION.SDK_INT < 24) return false;
+        try {
+            return (Boolean) TvInputInfo.class.getMethod("isHidden", Context.class).invoke(in, c);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static CharSequence customLabel(Context c, TvInputInfo in) {
+        if (android.os.Build.VERSION.SDK_INT < 24) return null;
+        try {
+            return (CharSequence) TvInputInfo.class.getMethod("loadCustomLabel", Context.class).invoke(in, c);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /** HDMI, AV and other passthrough inputs; HDMI first in port order. */
     static List<Item> inputs(Context c, TvInputManager tv) {
         List<Item> out = new ArrayList<>();
         if (tv == null) return out;
         List<Item> other = new ArrayList<>();
         for (TvInputInfo in : tv.getTvInputList()) {
-            if (!in.isPassthroughInput() || in.isHidden(c)) continue;
-            CharSequence label = in.loadCustomLabel(c);
+            if (!in.isPassthroughInput() || hidden(c, in)) continue;
+            CharSequence label = customLabel(c, in);
             if (TextUtils.isEmpty(label)) label = in.loadLabel(c);
             Intent view = new Intent(Intent.ACTION_VIEW,
                     TvContract.buildChannelUriForPassthroughInput(in.getId()));

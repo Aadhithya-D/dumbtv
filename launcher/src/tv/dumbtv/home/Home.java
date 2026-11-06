@@ -95,7 +95,8 @@ public final class Home extends Activity {
             loadInputs();
         }
 
-        @Override
+        // TvInputCallback.onInputUpdated only exists from Android 6.0, so it is not an @Override
+        // when compiling for Fire OS 5; newer builds still call it.
         public void onInputUpdated(String id) {
             loadInputs();
         }
