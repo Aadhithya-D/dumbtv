@@ -15,6 +15,11 @@ import android.view.ViewGroup;
  */
 final class Grid extends ViewGroup {
     private final int hGap, vGap;
+    /** Apple TV style: a fixed column count, and a tray drawn behind the first line. 0 = fit. */
+    int fixedColumns;
+    boolean tray;
+    private final android.graphics.Paint trayPaint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+    private final android.graphics.Paint trayEdge = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
 
     Grid(Context c) {
         super(c);
@@ -22,9 +27,30 @@ final class Grid extends ViewGroup {
         setClipToPadding(false);
         hGap = Ui.dp(c, 18);
         vGap = Ui.dp(c, 18);
+        trayPaint.setColor(0x59000000);
+        trayEdge.setStyle(android.graphics.Paint.Style.STROKE);
+        trayEdge.setStrokeWidth(Ui.dp(c, 1));
+        trayEdge.setColor(0x14FFFFFF);
+    }
+
+    @Override
+    protected void dispatchDraw(android.graphics.Canvas canvas) {
+        int n = getChildCount();
+        if (tray && n > 0) {
+            int cols = Math.min(n, columns());
+            View first = getChildAt(0), last = getChildAt(cols - 1);
+            float pad = Ui.dp(getContext(), 12), r = Ui.dp(getContext(), 22);
+            float l = first.getLeft() - pad, t = first.getTop() - pad;
+            // A tile keeps room under its card for a name; the tray hugs the 16:9 card itself.
+            float rt = last.getRight() + pad, b = first.getTop() + first.getWidth() * 9f / 16f + pad;
+            canvas.drawRoundRect(l, t, rt, b, r, r, trayPaint);
+            canvas.drawRoundRect(l, t, rt, b, r, r, trayEdge);
+        }
+        super.dispatchDraw(canvas);
     }
 
     private int columns(int availableWidth, int childWidth) {
+        if (fixedColumns > 0) return fixedColumns;
         return Math.max(1, (availableWidth + hGap) / (childWidth + hGap));
     }
 

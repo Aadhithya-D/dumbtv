@@ -77,6 +77,14 @@ public final class Home extends Activity {
     private GradientDrawable glow;
     private LinearLayout spot;
     private TextView spotTitle;
+    private FrameLayout.LayoutParams spotLp;
+    /** Apple TV style: the aurora, the dimming over it once the grid slides up, and that state. */
+    private final Aurora aurora = new Aurora();
+    private View dim;
+    private boolean expanded;
+    private TextView greet;
+    private LinearLayout line;
+    private View sep;
     private static final int SPOT_BASE = 0xFF0A0A0D;
     private LinearLayout head;
     private TextView clock, date;
@@ -439,6 +447,15 @@ public final class Home extends Activity {
      */
     private int rowTarget(ScrollView page, Rect r) {
         View content = page.getChildAt(0);
+        if (tvStyle() && apps.grid.getVisibility() == View.VISIBLE && apps.grid.getChildCount() > 0) {
+            View first = apps.grid.getChildAt(0);
+            int gridTop = topIn(apps.grid, content);
+            int range = Math.max(0, content.getHeight() - page.getHeight());
+            if (r.centerY() < gridTop + first.getBottom()) return 0;
+            int top = gridTop + first.getTop() - dp(48);
+            int need = r.bottom + dp(48) - page.getHeight();
+            return Math.max(0, Math.min(range, Math.max(top, need)));
+        }
         List<int[]> rows = rowBlocks(content);
         int[] at = null;
         for (int[] b : rows) {
@@ -490,6 +507,16 @@ public final class Home extends Activity {
         View content = page.getChildAt(0);
         if (content == null || page.getHeight() == 0) return;
         int base = dp(32), height = page.getHeight();
+        if (tvStyle() && apps.grid.getChildCount() > 0) {
+            // Room to slide the first line up to the top of the screen.
+            int firstTop = topIn(apps.grid, content) + apps.grid.getChildAt(0).getTop();
+            int natural = content.getHeight() - content.getPaddingBottom();
+            int want = Math.max(dp(48), firstTop - dp(48) + height - natural);
+            if (content.getPaddingBottom() != want) {
+                content.setPadding(content.getPaddingLeft(), content.getPaddingTop(), content.getPaddingRight(), want);
+            }
+            return;
+        }
         int natural = content.getHeight() - content.getPaddingBottom() + base;
         int want = base;
         if (natural > height) {
@@ -536,12 +563,12 @@ public final class Home extends Activity {
         spotTitle = Ui.text(this, 60, Ui.TEXT, android.graphics.Typeface.DEFAULT_BOLD);
         spotTitle.setLetterSpacing(-0.02f);
         spotTitle.setSingleLine(true);
-        TextView spotHint = Ui.text(this, 15, Ui.MUTED, Ui.MEDIUM);
-        spotHint.setText("OK to open  ·  hold OK for options");
-        spotHint.setPadding(dp(3), dp(2), 0, 0);
         spot.addView(spotTitle);
-        spot.addView(spotHint);
-        FrameLayout.LayoutParams spotLp = new FrameLayout.LayoutParams(WRAP, WRAP);
+        dim = new View(this);
+        dim.setBackgroundColor(0x99000000);
+        dim.setAlpha(0f);
+        root.addView(dim, new FrameLayout.LayoutParams(MATCH, MATCH));
+        spotLp = new FrameLayout.LayoutParams(WRAP, WRAP);
         spotLp.leftMargin = dp(56);
         spotLp.topMargin = Math.round(screenH * 0.25f);
         root.addView(spot, spotLp);
@@ -557,6 +584,8 @@ public final class Home extends Activity {
             protected void onLayout(boolean changed, int l, int t, int r, int b) {
                 super.onLayout(changed, l, t, r, b);
                 fitBottom(this);
+                // The header's height changes with Home style; place the first line after it.
+                if (tvStyle()) post(Home.this::adjustAppRowPosition);
             }
 
             /**
@@ -679,11 +708,26 @@ public final class Home extends Activity {
         head.setPadding(dp(56), 0, dp(56), dp(12));
         LinearLayout when = new LinearLayout(this);
         when.setOrientation(LinearLayout.VERTICAL);
+        greet = Ui.text(this, 12, Ui.MUTED, Ui.MEDIUM);
+        greet.setLetterSpacing(0.18f);
+        greet.setPadding(dp(2), 0, 0, dp(2));
+        greet.setVisibility(View.GONE);
         clock = Ui.text(this, 52, Ui.TEXT, Ui.LIGHT);
         date = Ui.text(this, 15, Ui.MUTED, Ui.MEDIUM);
         date.setPadding(dp(2), dp(8), 0, 0);
-        when.addView(clock);
-        when.addView(date);
+        line = new LinearLayout(this);
+        line.setOrientation(LinearLayout.VERTICAL);
+        sep = new View(this);
+        sep.setBackgroundColor(0x4DFFFFFF);
+        sep.setVisibility(View.GONE);
+        LinearLayout.LayoutParams sepLp = new LinearLayout.LayoutParams(dp(1), dp(22));
+        sepLp.leftMargin = dp(16);
+        sepLp.rightMargin = dp(16);
+        line.addView(clock, new LinearLayout.LayoutParams(WRAP, WRAP));
+        line.addView(sep, sepLp);
+        line.addView(date, new LinearLayout.LayoutParams(WRAP, WRAP));
+        when.addView(greet);
+        when.addView(line);
         meter = new Meter(this);
         meter.setWords(getString(R.string.meter_title), getString(R.string.meter_free),
                 getString(R.string.meter_low));
@@ -781,6 +825,7 @@ public final class Home extends Activity {
         v.setOnFocusChangeListener((view, has) -> {
             view.animate().scaleX(has ? 1.06f : 1f).scaleY(has ? 1.06f : 1f).setDuration(110).start();
             if (has) focusBackground(null);
+            if (has) setExpanded(false, true);
         });
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(WRAP, WRAP);
         lp.leftMargin = dp(10);
@@ -793,9 +838,27 @@ public final class Home extends Activity {
     private void apply() {
         applied = cfg.version();
         int accent = cfg.accent();
+        boolean tv = tvStyle();
         for (TextView c : chips) {
-            Ui.focusStyle(c, accent, 0x14FFFFFF, dp(18));
+            Ui.focusStyle(c, accent, tv ? 0x1AFFFFFF : 0x14FFFFFF, dp(18));
             c.setVisibility(locked() ? View.GONE : View.VISIBLE);
+            c.setTextSize(tv ? 12 : 14);
+            c.setPadding(dp(tv ? 14 : 18), dp(tv ? 6 : 9), dp(tv ? 14 : 18), dp(tv ? 6 : 9));
+        }
+        greet.setVisibility(tv && "on".equals(cfg.get(Config.GREETING)) ? View.VISIBLE : View.GONE);
+        line.setOrientation(tv ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
+        line.setGravity(tv ? Gravity.CENTER_VERTICAL : Gravity.NO_GRAVITY);
+        sep.setVisibility(tv ? View.VISIBLE : View.GONE);
+        clock.setTextSize(tv ? 34 : 52);
+        date.setTextSize(tv ? 13 : 15);
+        date.setAllCaps(tv);
+        date.setLetterSpacing(tv ? 0.16f : 0f);
+        date.setPadding(tv ? 0 : dp(2), tv ? 0 : dp(8), 0, 0);
+        apps.grid.fixedColumns = tv ? Integer.parseInt(cfg.get(Config.COLUMNS)) : 0;
+        apps.grid.tray = tv;
+        if (!tv) {
+            expanded = false;
+            dim.setAlpha(0f);
         }
         meter.setVisibility("on".equals(cfg.get(Config.MEMORY)) ? View.VISIBLE : View.GONE);
         meter.setAccent(accent);
@@ -900,7 +963,7 @@ public final class Home extends Activity {
                 : new ArrayList<>();
         int[] size = cardSize();
         int w = size[0], h = Catalog.isApp(row.kind) ? size[1] : Math.round(size[1] * 0.56f);
-        String labels = cfg.get(Config.LABELS);
+        String labels = tvStyle() ? "never" : cfg.get(Config.LABELS);
         int accent = cfg.accent();
         int index = 0, restore = -1;
         for (Item it : shown) {
@@ -913,6 +976,7 @@ public final class Home extends Activity {
                     lastIds.put(tile.kind, tile.item.id);
                     focusBackground(tile.item);
                     spotlight(tile);
+                    if (tvStyle() && tile.getParent() == apps.grid) setExpanded(lineOf(tile) > 0, true);
                 }
             });
             t.setOnLongClickListener(v -> {
@@ -932,6 +996,8 @@ public final class Home extends Activity {
                     || "afterglow".equals(cfg.get(Config.TILE_STYLE)) && it.icon == null)) loadArt(it);
         }
         row.setVisible(!shown.isEmpty());
+        if (tvStyle() && row.title.getVisibility() == View.VISIBLE) row.title.setVisibility(View.INVISIBLE);
+        if (row == apps && tvStyle()) setExpanded(expanded, false);
         adjustAppRowPosition();
         if (shown.isEmpty()) {
             // Nothing is left to come back to: forget the tile that used to be here.
@@ -976,13 +1042,69 @@ public final class Home extends Activity {
         return Math.min(desired, maxShift);
     }
 
+    private boolean tvStyle() {
+        return "tv".equals(cfg.get(Config.STYLE));
+    }
+
+    /** Where Apple TV style's first line of apps sits on the home screen, as a share of its height. */
+    private static final float TV_ROW = 0.62f;
+
+    /** The apps title's top margin that puts the first line of tiles at {@link #TV_ROW}. */
+    private int tvShift() {
+        int titleH = apps.title.getHeight();
+        if (titleH <= 0) {
+            apps.title.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+            titleH = apps.title.getMeasuredHeight();
+        }
+        int headH = head.getHeight();
+        if (headH <= 0) {
+            head.measure(View.MeasureSpec.makeMeasureSpec(
+                    getResources().getDisplayMetrics().widthPixels, View.MeasureSpec.AT_MOST),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+            headH = head.getMeasuredHeight();
+        }
+        int firstTop = column.getPaddingTop() + headH + titleH + apps.grid.getPaddingTop();
+        int screenH = getResources().getDisplayMetrics().heightPixels;
+        return Math.max(0, Math.round(screenH * TV_ROW) - firstTop);
+    }
+
+    private int lineOf(Tile t) {
+        int cols = Math.max(1, apps.grid.fixedColumns);
+        return Math.max(0, apps.grid.indexOfChild(t)) / cols;
+    }
+
+    /**
+     * Apple TV style: on the first line the rest of the grid is hidden (or peeks, with Peek on);
+     * below it the page has slid up, the background dims and the big name gives way.
+     */
+    private void setExpanded(boolean on, boolean animate) {
+        if (!tvStyle()) return;
+        expanded = on;
+        long d = animate ? 220 : 0;
+        dim.animate().alpha(on ? 1f : 0f).setDuration(d).start();
+        spot.animate().alpha(on ? 0f : 1f).setDuration(d).start();
+        float rest = on || "on".equals(cfg.get(Config.PEEK)) ? 1f : 0f;
+        int cols = Math.max(1, apps.grid.fixedColumns);
+        for (int i = cols; i < apps.grid.getChildCount(); i++) {
+            View t = apps.grid.getChildAt(i);
+            // Not t.animate(): the tile's own focus scale shares that animator and cancels it.
+            if (animate && t.getAlpha() != rest) {
+                android.animation.ObjectAnimator.ofFloat(t, View.ALPHA, rest).setDuration(d).start();
+            } else if (!animate) {
+                t.setAlpha(rest);
+            }
+        }
+    }
+
     private void adjustAppRowPosition() {
         if (apps == null || apps.title == null) return;
         ViewGroup.LayoutParams params = apps.title.getLayoutParams();
         if (!(params instanceof LinearLayout.LayoutParams)) return;
         LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) params;
         // The library banner takes that space when it shows, and so does All apps.
-        int targetMargin = (!"grid".equals(cfg.get(Config.LAYOUT)) && isInputsHidden()
+        int targetMargin = tvStyle() ? tvShift()
+                : (!"grid".equals(cfg.get(Config.LAYOUT)) && isInputsHidden()
                 && !heroShown() && allApps.title.getVisibility() != View.VISIBLE) ? appRowShift() : 0;
         if (lp.topMargin != targetMargin) {
             lp.topMargin = targetMargin;
@@ -1013,7 +1135,7 @@ public final class Home extends Activity {
     private void focusBackground(Item it) {
         String mode = cfg.get(Config.BACKGROUND);
         if (!resumed || !"adaptive".equals(mode) && !"adaptive-tint".equals(mode)
-                && !"spotlight".equals(mode)) return;
+                && !"spotlight".equals(mode) && !"aurora".equals(mode)) return;
         if ("adaptive-tint".equals(mode) && !tintWallpaper) return;
         if (it != null && it.info != null && it.backgroundColor == 0 && !it.colorRequested
                 && (it.banner != null || it.icon != null)) {
@@ -1044,6 +1166,7 @@ public final class Home extends Activity {
     private void setAdaptiveColor(int color) {
         displayedColor = color;
         if ("adaptive-tint".equals(backgroundMode)) tint.setBackgroundColor(color);
+        else if ("aurora".equals(backgroundMode)) aurora.setColor(color);
         else if ("spotlight".equals(backgroundMode)) {
             glow.setColors(new int[] {shade(color, 0.55f), shade(color, 0.2f), SPOT_BASE});
         } else root.setBackgroundColor(color);
@@ -1073,6 +1196,11 @@ public final class Home extends Activity {
     }
 
     private int[] cardSize() {
+        if (tvStyle()) {
+            int cols = Integer.parseInt(cfg.get(Config.COLUMNS));
+            int w = (getResources().getDisplayMetrics().widthPixels - 2 * dp(56) - (cols - 1) * dp(18)) / cols;
+            return new int[] {w, w * 9 / 16};
+        }
         switch (cfg.get(Config.TILES)) {
             case "small":
                 return new int[] {dp(144), dp(81)};
@@ -1165,6 +1293,8 @@ public final class Home extends Activity {
             clock.setText(DateFormat.format("h:mm", now));
             clock.append(half);
         }
+        int hour = Integer.parseInt(DateFormat.format("H", now).toString());
+        greet.setText(hour < 5 ? "GOOD EVENING" : hour < 12 ? "GOOD MORNING" : hour < 17 ? "GOOD AFTERNOON" : "GOOD EVENING");
         Locale locale = Locale.getDefault();
         date.setText(DateFormat.format(DateFormat.getBestDateTimePattern(locale, "EEEEdMMMM"), now));
         if (meter.getVisibility() == View.VISIBLE) {
@@ -1178,9 +1308,18 @@ public final class Home extends Activity {
         String mode = cfg.get(Config.BACKGROUND);
         boolean spotMode = "spotlight".equals(mode);
         // The big name sits above a single row of apps; a grid or All apps would run into it.
-        spot.setVisibility(spotMode && !"grid".equals(cfg.get(Config.LAYOUT))
+        boolean tv = tvStyle();
+        boolean glowMode = spotMode || "aurora".equals(mode);
+        spot.setVisibility(tv || spotMode && !"grid".equals(cfg.get(Config.LAYOUT))
                 && !"on".equals(cfg.get(Config.ALL_APPS)) ? View.VISIBLE : View.GONE);
-        Tile.focusScale = spotMode ? 1.12f : 1.08f;
+        spotTitle.setTextSize(tv ? 30 : 44);
+        int screenH = getResources().getDisplayMetrics().heightPixels;
+        int spotTop = tv ? Math.round(screenH * TV_ROW) - dp(70) : Math.round(screenH * 0.25f);
+        if (spotLp.topMargin != spotTop) {
+            spotLp.topMargin = spotTop;
+            spot.setLayoutParams(spotLp);
+        }
+        Tile.focusScale = spotMode && !tv ? 1.12f : 1.08f;
         boolean image = "image".equals(mode) || "adaptive-tint".equals(mode);
         File file = image ? cfg.wallpaper() : null;
         tintWallpaper = "adaptive-tint".equals(mode) && file != null;
@@ -1194,12 +1333,12 @@ public final class Home extends Activity {
             }
             backgroundMode = mode;
             focusBackground(focusedItem());
-        } else if (spotMode) {
+        } else if (glowMode) {
             if (!mode.equals(backgroundMode)) {
                 stopColorAnimation();
                 targetColor = 0;
-                root.setBackgroundColor(SPOT_BASE);
-                tint.setBackground(glow);
+                root.setBackgroundColor(spotMode ? SPOT_BASE : Aurora.BASE);
+                tint.setBackground(spotMode ? glow : aurora);
                 backgroundMode = mode;
                 setAdaptiveColor(FocusColor.FALLBACK);
             }

@@ -67,6 +67,19 @@ final class Config {
     static final Choice LAYOUT = new Choice("layout", "Layout", "rows",
             new String[] {"rows", "grid"},
             new String[] {"Rows", "Grid"});
+    /** Apple TV style: one row of apps above the fold; Down slides the rest of the grid up. */
+    static final Choice STYLE = new Choice("style", "Home style", "classic",
+            new String[] {"classic", "tv"},
+            new String[] {"Classic", "Apple TV style"});
+    static final Choice COLUMNS = new Choice("columns", "Apps per row", "5",
+            new String[] {"4", "5", "6", "7"},
+            new String[] {"4", "5", "6", "7"});
+    static final Choice PEEK = new Choice("peek", "Peek of next row", "off",
+            new String[] {"off", "on"},
+            new String[] {"Off", "On"});
+    static final Choice GREETING = new Choice("greeting", "Greeting", "on",
+            new String[] {"on", "off"},
+            new String[] {"On", "Off"});
     static final Choice ORDER = new Choice("order", "App order", "custom",
             new String[] {"custom", "recent"},
             new String[] {"Your order", "Recently used"});
@@ -90,8 +103,8 @@ final class Config {
             new String[] {"auto", "tv", "home"},
             new String[] {"Automatic", "The TV's app", "dumbtv home"});
     static final Choice BACKGROUND = new Choice("background", "Background", "black",
-            new String[] {"black", "graphite", "midnight", "image", "adaptive", "adaptive-tint", "spotlight"},
-            new String[] {"Black", "Graphite", "Midnight", "Image file", "Adaptive solid", "Adaptive wallpaper tint", "Spotlight"});
+            new String[] {"black", "graphite", "midnight", "image", "adaptive", "adaptive-tint", "spotlight", "aurora"},
+            new String[] {"Black", "Graphite", "Midnight", "Image file", "Adaptive solid", "Adaptive wallpaper tint", "Spotlight", "Aurora in app colour"});
     static final Choice DIM = new Choice("dim", "Image dim", "40",
             new String[] {"0", "20", "40", "60", "80"},
             new String[] {"0%", "20%", "40%", "60%", "80%"});
@@ -113,7 +126,7 @@ final class Config {
     /** The banner of hand-picked titles from {@link Library}; hidden anyway while it has none. */
     static final Choice LIBRARY = new Choice("library", "Library banner", "on",
             new String[] {"on", "off"}, new String[] {"Shown", "Hidden"});
-    static final Choice[] CHOICES = {ACCENT, TILES, LAYOUT, ORDER, ALL_APPS, LABELS, CLOCK, MEMORY, INPUTS, SWITCH, BACKGROUND, DIM, ROTATE, LOCK, TILE_STYLE, LIBRARY};
+    static final Choice[] CHOICES = {ACCENT, TILES, LAYOUT, STYLE, COLUMNS, PEEK, GREETING, ORDER, ALL_APPS, LABELS, CLOCK, MEMORY, INPUTS, SWITCH, BACKGROUND, DIM, ROTATE, LOCK, TILE_STYLE, LIBRARY};
 
     /** Folder of wallpapers, next to home.conf, that Background › Image file rotates through. */
     static final String WALLPAPERS = "wallpapers";
@@ -124,7 +137,7 @@ final class Config {
     private static final int[] ACCENTS = {
         0xFFFFFFFF, 0xFF3D8BFF, 0xFF2BC4E8, 0xFF34C759, 0xFFFFB340, 0xFFFF5147, 0xFFFF5C9D, 0xFFA07CFF,
     };
-    private static final int[] BACKGROUNDS = {0xFF000000, 0xFF141518, 0xFF0B1220, 0xFF000000, 0xFF141518, 0xFF141518, 0xFF0A0A0D};
+    private static final int[] BACKGROUNDS = {0xFF000000, 0xFF141518, 0xFF0B1220, 0xFF000000, 0xFF141518, 0xFF141518, 0xFF0A0A0D, 0xFF0A0608};
 
     private static Config instance;
 
@@ -281,6 +294,8 @@ final class Config {
     }
 
     String get(Choice c) {
+        // Apple TV style is built on the grid, whatever Layout says.
+        if (c == LAYOUT && "tv".equals(values.get(STYLE.key))) return "grid";
         String v = values.get(c.key);
         return v != null && Arrays.asList(c.values).contains(v) ? v : c.fallback;
     }
