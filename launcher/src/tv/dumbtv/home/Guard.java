@@ -66,6 +66,47 @@ public final class Guard extends AccessibilityService {
         }
     };
 
+    /**
+     * HOME pressed while Options › Open Amazon's home has paused the guard. Amazon's home is
+     * already on top then, so the press leaves no window event, and Fire OS refuses
+     * CLOSE_SYSTEM_DIALOGS ("homekey") to apps. Every press does make Fire OS's key policy log
+     * "...FireTVKeyPolicyManager.sendHome" (system_server, tag ContextImpl), which this reads
+     * with READ_LOGS, the permission the Top Shelf already has. Without it, leaving Amazon's
+     * home through any app still ends the pause, as before.
+     */
+    private Thread homeWatch;
+
+    private void watchHomeKey() {
+        if (homeWatch != null) return;
+        homeWatch = new Thread(() -> {
+            while (running == this) {
+                Process p = null;
+                try {
+                    p = new ProcessBuilder("logcat", "-v", "raw", "-T", "1", "ContextImpl:W", "*:S")
+                            .redirectErrorStream(true).start();
+                    java.io.BufferedReader r = new java.io.BufferedReader(
+                            new java.io.InputStreamReader(p.getInputStream()));
+                    for (String line; (line = r.readLine()) != null && running == this; ) {
+                        if (line.contains("FireTVKeyPolicyManager.sendHome")) handler.post(this::homePressed);
+                    }
+                } catch (Exception ignored) {
+                    // no READ_LOGS: nothing to watch
+                } finally {
+                    if (p != null) p.destroy();
+                }
+                SystemClock.sleep(60_000);
+            }
+        }, "home-key");
+        homeWatch.setDaemon(true);
+        homeWatch.start();
+    }
+
+    private void homePressed() {
+        if (!paused) return;
+        paused = false;
+        launchWhenCovered();
+    }
+
     /** Lets Amazon's home stay on screen until the user leaves it. */
     static void pause() {
         paused = true;
@@ -129,6 +170,7 @@ public final class Guard extends AccessibilityService {
         ((WindowManager) getSystemService(WINDOW_SERVICE)).addView(view, lp);
         cover = view;
         registerReceiver(screenOn, new IntentFilter(Intent.ACTION_SCREEN_ON));
+        watchHomeKey();
         Filter.watch(this);
     }
 
