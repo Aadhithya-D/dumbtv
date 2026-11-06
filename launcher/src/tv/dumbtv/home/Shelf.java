@@ -99,8 +99,14 @@ final class Shelf {
     static synchronized void start(Context c) {
         if (started) return;
         started = true;
-        dir = c.getFilesDir();
+        // Next to home.conf, so it can be backed up and read with adb like the settings.
+        File ext = c.getExternalFilesDir(null);
+        dir = ext != null ? ext : c.getFilesDir();
+        if (ext != null && !new File(ext, "shelf.json").isFile() && new File(c.getFilesDir(), "shelf.json").isFile()) {
+            new File(c.getFilesDir(), "shelf.json").renameTo(new File(ext, "shelf.json"));
+        }
         load();
+        PinServer.start(c);
         Thread t = new Thread(Shelf::follow, "shelf-log");
         t.setDaemon(true);
         t.start();
@@ -129,6 +135,11 @@ final class Shelf {
             }
         }
         return out;
+    }
+
+    /** Every pin, oldest first. */
+    static synchronized List<Entry> allPins() {
+        return new ArrayList<>(pins);
     }
 
     static synchronized boolean pinned(Entry e) {
