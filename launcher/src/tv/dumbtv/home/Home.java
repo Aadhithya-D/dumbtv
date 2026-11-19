@@ -431,6 +431,19 @@ public final class Home extends Activity implements Shelf.Listener {
 
     @Override
     public void onBackPressed() {
+        // Apple TV style, on a lower line of apps or its shelf: back up to the first line, in the
+        // same column, rather than all the way to the first app.
+        View f = getCurrentFocus();
+        Tile at = f instanceof Tile && f.getParent() == apps.grid ? (Tile) f
+                : f instanceof ShelfCard && shelfOwner != null && shelfOwner.getParent() == apps.grid ? shelfOwner : null;
+        if (tvStyle() && at != null && lineOf(at) > 0) {
+            int cols = Math.max(1, apps.grid.fixedColumns);
+            View top = apps.grid.getChildAt(apps.grid.indexOfChild(at) % cols);
+            if (top != null) {
+                top.requestFocus();
+                return;
+            }
+        }
         focusFirst();
     }
 
