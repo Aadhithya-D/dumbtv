@@ -92,6 +92,9 @@
     <string name="choice_layout">Layout</string>
     <string name="choice_layout_rows">Rows</string>
     <string name="choice_layout_grid">Grid</string>
+    <string name="choice_position">Home position</string>
+    <string name="choice_position_top">Top</string>
+    <string name="choice_position_bottom">Bottom</string>
     <string name="choice_order">App order</string>
     <string name="choice_order_custom">Your order</string>
     <string name="choice_order_recent">Recently used</string>
@@ -133,10 +136,15 @@
     <string name="choice_tile_style">App tile style</string>
     <string name="choice_tile_style_original">Original</string>
     <string name="choice_tile_style_afterglow">Afterglow</string>
+    <string name="choice_chips">Chip style</string>
+    <string name="choice_chips_text">Text</string>
+    <string name="choice_chips_icons">Icons</string>
     <string name="choice_all_apps">All apps section</string>
     <string name="choice_all_apps_off">Hidden</string>
     <string name="choice_all_apps_on">Shown</string>
     <string name="choice_icon_pack">Icon pack</string>
+    <string name="icon_pack_off">Off</string>
+    <string name="icon_pack_none">None installed</string>
     <string name="choice_library">Library banner</string>
     <string name="choice_library_on">Shown</string>
     <string name="choice_library_off">Hidden</string>

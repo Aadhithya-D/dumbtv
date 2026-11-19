@@ -78,6 +78,7 @@ if [[ $mode == undo ]]; then
   # force-stop also keeps the Fire OS 6 Keeper from restarting at the next boot.
   sh_ am force-stop $PKG >/dev/null 2>&1 || true
   sh_ appops set $PKG GET_USAGE_STATS default >/dev/null 2>&1 || true
+  sh_ appops set $PKG AUTO_START default >/dev/null 2>&1 || true
   set_futurity off
   set_guard ""
   sh_ dumpsys deviceidle whitelist -$PKG >/dev/null 2>&1 || true
@@ -139,6 +140,11 @@ esac
 echo "installed $PKG"
 
 sh_ dumpsys deviceidle whitelist +$PKG >/dev/null
+# TCL's TclAppBoot refuses to bind the Guard of an app without the AUTO_START app-op (#176).
+# Builds without that op refuse the name. App-ops reach the disk lazily, so it is written
+# now, before a reboot can drop it.
+sh_ appops set $PKG AUTO_START allow >/dev/null 2>&1 || true
+sh_ appops write-settings >/dev/null 2>&1 || true
 
 # Fire OS 6.7 refuses third-party accessibility services (A11yAuthorizer), so the Guard
 # cannot bind there. Keeper watches Amazon's home through UsageStats and calls
@@ -181,9 +187,15 @@ sleep 2
 source ../scripts/accessibility.sh
 user=$(sh_ am get-current-user | tr -d '\r')
 bound=0
-for _ in $(seq 1 15); do
-  if sh_ dumpsys accessibility | guard_bound "${user:-0}"; then bound=1; break; fi
-  sleep 1
+# A Hisense AFTHA001 left the first enable unbound, and a second run bound it at once (PR #193),
+# so the service is switched off and on once more before this gives up.
+for attempt in 1 2; do
+  [[ $attempt == 2 ]] && { echo "the HOME guard is not bound yet; switching it off and on again"; set_guard $GUARD; }
+  for _ in $(seq 1 15); do
+    if sh_ dumpsys accessibility | guard_bound "${user:-0}"; then bound=1; break; fi
+    sleep 1
+  done
+  [[ $bound == 1 ]] && break
 done
 if [[ $bound == 0 ]]; then
   echo "error: Fire OS did not bind the HOME guard ($GUARD)." >&2

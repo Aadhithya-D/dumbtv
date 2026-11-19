@@ -83,6 +83,13 @@ final class Config {
     static final Choice SHELF = new Choice("shelf", "Top Shelf", "on",
             new String[] {"on", "off"},
             new String[] {"On", "Off"});
+    /**
+     * Where the rows sit. Bottom leaves the clock, Options and Settings at the top and moves the
+     * rows down to the bottom edge, so the middle of the screen shows the wallpaper.
+     */
+    static final Choice POSITION = new Choice("position", "Home position", "top",
+            new String[] {"top", "bottom"},
+            new String[] {"Top", "Bottom"});
     static final Choice ORDER = new Choice("order", "App order", "custom",
             new String[] {"custom", "recent"},
             new String[] {"Your order", "Recently used"});
@@ -126,10 +133,13 @@ final class Config {
 
     static final Choice TILE_STYLE = new Choice("tile_style", "App tile style", "original",
             new String[] {"original", "afterglow"}, new String[] {"Original", "Afterglow"});
+    /** Options and Settings in the corner: text chips, or icon buttons whose name shows on focus. */
+    static final Choice CHIPS = new Choice("chips", "Chip style", "text",
+            new String[] {"text", "icons"}, new String[] {"Text", "Icons"});
     /** The banner of hand-picked titles from {@link Library}; hidden anyway while it has none. */
     static final Choice LIBRARY = new Choice("library", "Library banner", "on",
             new String[] {"on", "off"}, new String[] {"Shown", "Hidden"});
-    static final Choice[] CHOICES = {ACCENT, TILES, LAYOUT, STYLE, COLUMNS, PEEK, GREETING, SHELF, ORDER, ALL_APPS, LABELS, CLOCK, MEMORY, INPUTS, SWITCH, BACKGROUND, DIM, ROTATE, LOCK, TILE_STYLE, LIBRARY};
+    static final Choice[] CHOICES = {ACCENT, TILES, LAYOUT, STYLE, COLUMNS, PEEK, GREETING, SHELF, POSITION, ORDER, ALL_APPS, LABELS, CLOCK, MEMORY, INPUTS, SWITCH, BACKGROUND, DIM, ROTATE, LOCK, TILE_STYLE, CHIPS, LIBRARY};
 
     /** Folder of wallpapers, next to home.conf, that Background › Image file rotates through. */
     static final String WALLPAPERS = "wallpapers";

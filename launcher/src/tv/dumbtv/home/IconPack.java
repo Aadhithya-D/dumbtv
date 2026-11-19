@@ -75,11 +75,13 @@ final class IconPack {
      * Off, then every installed pack by name. A chosen pack that was uninstalled is simply not
      * offered: the row shows Off and the tiles their own art, while the setting stays, so the
      * pack is back as it was once installed again. With no pack installed, Off reads
-     * "None installed", so the row says why there is nothing to pick.
+     * {@code none}, so the row says why there is nothing to pick. Both labels arrive in the TV's
+     * language; their strings are not named choice_icon_pack_*, so Text cannot swap one for the
+     * other.
      */
-    static Config.Choice choice(Map<String, String> installed) {
+    static Config.Choice choice(Map<String, String> installed, String off, String none) {
         Map<String, String> packs = new LinkedHashMap<>();
-        packs.put(OFF, installed.isEmpty() ? "None installed" : "Off");
+        packs.put(OFF, installed.isEmpty() ? none : off);
         packs.putAll(installed);
         return new Config.Choice(KEY, "Icon pack", OFF,
                 packs.keySet().toArray(new String[0]), packs.values().toArray(new String[0]));

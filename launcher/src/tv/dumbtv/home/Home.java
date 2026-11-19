@@ -2,6 +2,7 @@ package tv.dumbtv.home;
 
 import android.animation.ValueAnimator;
 import android.app.Activity;
+import android.app.ActivityOptions;
 import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
@@ -16,7 +17,6 @@ import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.media.tv.TvInputManager;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -65,6 +65,8 @@ public final class Home extends Activity implements Shelf.Listener {
     private Config cfg;
     private TvInputManager tv;
     private int applied = -1, appsGeneration;
+    /** Whether the home screen is the resumed activity; Guard reads it on the same main thread. */
+    static boolean inFront;
     private boolean resumed, landed, unlockOpened;
     private String lastFocusedKind;
     private final Map<String, String> lastIds = new HashMap<>();
@@ -97,6 +99,8 @@ public final class Home extends Activity implements Shelf.Listener {
     private Meter meter;
     private Row apps, allApps, inputs;
     private Hero hero;
+    /** Options › Home position › Bottom: the empty stretch between the clock and the rows. */
+    private View spacer;
     private int libraryGeneration;
     private Map<String, Long> recent = new HashMap<>();
     private Tile moving;
@@ -331,6 +335,7 @@ public final class Home extends Activity implements Shelf.Listener {
     protected void onResume() {
         super.onResume();
         resumed = true;
+        inFront = true;
         Guard.arrived(this);
         Filter.wake(this);
         cfg.refresh();
@@ -356,6 +361,7 @@ public final class Home extends Activity implements Shelf.Listener {
     protected void onPause() {
         super.onPause();
         resumed = false;
+        inFront = false;
         hero.stop();
         stopColorAnimation();
         targetColor = 0;
@@ -795,9 +801,17 @@ public final class Home extends Activity implements Shelf.Listener {
         under.leftMargin = dp(2);
         when.addView(meter, under);
         head.addView(when, new LinearLayout.LayoutParams(0, WRAP, 1f));
-        head.addView(chip(getString(R.string.options), v -> startActivity(new Intent(this, Options.class))));
-        head.addView(chip(getString(R.string.settings), v -> openSettings()));
+        head.addView(chip(getString(R.string.options), R.drawable.chip_options, R.drawable.chip_options_mark,
+                v -> startActivity(new Intent(this, Options.class))));
+        head.addView(chip(getString(R.string.settings), R.drawable.chip_settings, R.drawable.chip_settings_mark,
+                v -> openSettings()));
         column.addView(head, new LinearLayout.LayoutParams(MATCH, WRAP));
+        // Home position › Bottom: the page fills the screen (setFillViewport), and this stretch
+        // takes what the banner and the rows leave of it, so they sit on the bottom edge. When
+        // they do not fit on one screen it gets nothing, and the page scrolls as with Top.
+        spacer = new View(this);
+        spacer.setVisibility(View.GONE);
+        column.addView(spacer, new LinearLayout.LayoutParams(MATCH, 0, 1f));
 
         hero = new Hero(this, ui, io);
         hero.setOnClickListener(v -> hero.openCurrent());
@@ -872,19 +886,31 @@ public final class Home extends Activity implements Shelf.Listener {
         return "on".equals(cfg.get(Config.LOCK));
     }
 
-    private TextView chip(String label, View.OnClickListener click) {
+    private boolean atBottom() {
+        return "bottom".equals(cfg.get(Config.POSITION));
+    }
+
+    /**
+     * A chip in the corner. Options › Chip style picks its look: the text chip (the default), or
+     * a round icon button whose name shows next to the icon only while it has the focus, so the
+     * corner stays quiet and the remote still says where OK goes. {@code shape} and
+     * {@code mark} are the two layers {@link Ui#chipIcon} tints; {@link #apply} draws them.
+     */
+    private TextView chip(String label, int shape, int mark, View.OnClickListener click) {
         TextView v = Ui.text(this, 14, Ui.TEXT, Ui.MEDIUM);
-        v.setText(label);
+        v.setTag(new int[] {shape, mark});
+        v.setContentDescription(label);
         v.setGravity(Gravity.CENTER);
-        v.setPadding(dp(18), dp(9), dp(18), dp(9));
         v.setFocusable(true);
         v.setClickable(true);
         v.setOnClickListener(click);
         v.setOnFocusChangeListener((view, has) -> {
+            chipLook(v, has);
             view.animate().scaleX(has ? 1.06f : 1f).scaleY(has ? 1.06f : 1f).setDuration(110).start();
             if (has) focusBackground(null);
             if (has) setExpanded(false, true);
         });
+        chipLook(v, false);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(WRAP, WRAP);
         lp.leftMargin = dp(10);
         lp.topMargin = dp(6);
@@ -893,15 +919,36 @@ public final class Home extends Activity implements Shelf.Listener {
         return v;
     }
 
+    private boolean iconChips() {
+        return "icons".equals(cfg.get(Config.CHIPS));
+    }
+
+    /** Text and padding for the chip style: the name always for text, on focus only for icons. */
+    private void chipLook(TextView c, boolean focused) {
+        if (!iconChips()) {
+            c.setText(c.getContentDescription());
+            c.setCompoundDrawablePadding(0);
+            c.setPadding(dp(18), dp(9), dp(18), dp(9));
+            return;
+        }
+        c.setText(focused ? c.getContentDescription() : "");
+        c.setCompoundDrawablePadding(focused ? dp(8) : 0);
+        c.setPadding(dp(10), dp(10), dp(focused ? 16 : 10), dp(10));
+    }
+
     private void apply() {
         applied = cfg.version();
         int accent = cfg.accent();
         boolean tv = tvStyle();
+        boolean icons = iconChips();
         for (TextView c : chips) {
-            Ui.focusStyle(c, accent, tv ? 0x1AFFFFFF : 0x14FFFFFF, dp(18));
-            c.setVisibility(locked() ? View.GONE : View.VISIBLE);
+            Ui.focusStyle(c, accent, tv ? 0x1AFFFFFF : 0x14FFFFFF, dp(icons ? 21 : 18));
+            int[] art = (int[]) c.getTag();
+            c.setCompoundDrawablesRelative(icons ? Ui.chipIcon(getDrawable(art[0]), getDrawable(art[1]),
+                    accent, dp(22)) : null, null, null, null);
             c.setTextSize(tv ? 12 : 14);
-            c.setPadding(dp(tv ? 14 : 18), dp(tv ? 6 : 9), dp(tv ? 14 : 18), dp(tv ? 6 : 9));
+            chipLook(c, c.isFocused());
+            c.setVisibility(locked() ? View.GONE : View.VISIBLE);
         }
         greet.setVisibility(tv && "on".equals(cfg.get(Config.GREETING)) ? View.VISIBLE : View.GONE);
         line.setOrientation(tv ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
@@ -923,6 +970,7 @@ public final class Home extends Activity implements Shelf.Listener {
         meter.setVisibility("on".equals(cfg.get(Config.MEMORY)) ? View.VISIBLE : View.GONE);
         meter.setAccent(accent);
         hero.setAccent(accent);
+        spacer.setVisibility(atBottom() ? View.VISIBLE : View.GONE);
         apps.title.setText(getString("on".equals(cfg.get(Config.ALL_APPS))
                 ? R.string.row_pinned_apps : R.string.row_apps).toUpperCase(Locale.ROOT));
         String state = artState();
@@ -1290,9 +1338,11 @@ public final class Home extends Activity implements Shelf.Listener {
         ViewGroup.LayoutParams params = apps.title.getLayoutParams();
         if (!(params instanceof LinearLayout.LayoutParams)) return;
         LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) params;
-        // The library banner takes that space when it shows, and so does All apps.
+        // The library banner takes that space when it shows, and so does All apps. With Home
+        // position › Bottom the spacer already puts the apps on the bottom edge: the shift is
+        // measured from the display, not the page, and could push them below it.
         int targetMargin = tvStyle() ? tvShift()
-                : (!"grid".equals(cfg.get(Config.LAYOUT)) && isInputsHidden()
+                : (!atBottom() && !"grid".equals(cfg.get(Config.LAYOUT)) && isInputsHidden()
                 && !heroShown() && allApps.title.getVisibility() != View.VISIBLE) ? appRowShift() : 0;
         if (lp.topMargin != targetMargin) {
             lp.topMargin = targetMargin;
@@ -1613,12 +1663,13 @@ public final class Home extends Activity implements Shelf.Listener {
     }
 
     /**
-     * On Fire OS 8 the Appstore's launcher entry opens Amazon's home with its apps grid, which
-     * Guard then replaces with ours, so the tile seemed to do nothing (#133). Its store screen is
-     * opened instead. On Fire OS 7 the entry opens the store itself.
+     * On Fire OS 8, and on a Fire TV Cube on Fire OS 7, the Appstore's launcher entry opens
+     * Amazon's home with its apps grid, which Guard then replaces with ours, so the tile seemed
+     * to do nothing (#133). Its store screen is opened instead; where the entry works, it shows
+     * that same screen.
      */
     private Intent appIntent(Item it) {
-        if (Build.VERSION.SDK_INT >= 30 && APPSTORE.equals(it.id)) {
+        if (APPSTORE.equals(it.id)) {
             Intent store = new Intent(Intent.ACTION_MAIN)
                     .setClassName(APPSTORE, APPSTORE + ".ade.ADEHomeActivity");
             if (store.resolveActivity(getPackageManager()) != null) return store;
@@ -1643,7 +1694,10 @@ public final class Home extends Activity implements Shelf.Listener {
     private void launch(Intent i, String pkg) {
         if (Guard.AMAZON.equals(pkg)) Guard.pause();
         try {
-            startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED));
+            // No transition: on a warm start of an app with a trampoline activity, such as
+            // Prime Video, the animation showed home again between the two (#169).
+            startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED),
+                    ActivityOptions.makeCustomAnimation(this, 0, 0).toBundle());
             if (pkg != null) Recent.opened(this, pkg);
         } catch (ActivityNotFoundException | SecurityException e) {
             Toast.makeText(this, R.string.could_not_open, Toast.LENGTH_SHORT).show();

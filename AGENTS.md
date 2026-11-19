@@ -143,7 +143,7 @@ installed app that streams it now (check a current source), confirm its page lin
 `adb shell cmd package resolve-activity -a android.intent.action.VIEW -d <link> <package>`
 (leave the link out if none resolves), and get a wide picture. Put `library.conf` and the
 pictures in a folder outside the repository, never in a commit, and run
-`./scripts/library.sh <folder>`. Format: "Library banner" in [launcher/README.md](launcher/README.md).
+`./scripts/library.sh --dry-run <folder>`, then without `--dry-run`. Format: "Library banner" in [launcher/README.md](launcher/README.md).
 
 ## Reading the output
 
@@ -185,6 +185,8 @@ path. Use the table below; do not disable more packages.
 | Amazon's home screen is back | `./scripts/launcher.sh -y` |
 | Amazon's home shows for ~5 s before dumbtv home | `./scripts/launcher.sh -y` (an update reset the alarm setting) |
 | `verify.sh` warns `enabled again` or `back to Amazon's values` | an update undid part of the cleanup: `./scripts/debloat.sh -y` |
+| `verify.sh` warns `off, but the TV needs them` (Prime Video gone, phone app will not pair) | an older dumbtv disabled them: `./scripts/debloat.sh -y` |
+| The TV wakes from standby on Amazon's home | `./scripts/launcher.sh -y` (dumbtv home 1.10 and later stay in front) |
 | `verify.sh` warns `data-saver off` | `./scripts/lockdown.sh -y` |
 | `dnsfilter.sh` says the tracker list "does not look right" | the download was an error page or cut short; nothing was pushed. Run it again later |
 | Nothing is blocked, but the filter is running | reboot the TV |

@@ -15,6 +15,24 @@ ROOT = Path(__file__).resolve().parents[1]
 MEDIA = "/sdcard/Android/media/tv.dumbtv.home"
 
 
+def path_without(shim, *tools):
+    """PATH with the installed tools hidden (ImageMagick, macOS's sips): a directory holding
+    one is replaced by shim, which links everything else in it, so bash, python3 and the rest
+    stay reachable."""
+    dirs = []
+    for d in os.environ["PATH"].split(os.pathsep):
+        if not any((Path(d) / tool).exists() for tool in tools):
+            dirs.append(d)
+            continue
+        shim.mkdir(exist_ok=True)
+        for entry in Path(d).iterdir():
+            if entry.name not in tools and not (shim / entry.name).exists():
+                (shim / entry.name).symlink_to(entry)
+        if str(shim) not in dirs:
+            dirs.append(str(shim))
+    return os.pathsep.join(dirs)
+
+
 class WallpaperTest(unittest.TestCase):
     def run_script(self, *args, magick=False, installed=True, names=("beach.JPG", "night city.png")):
         holder = tempfile.TemporaryDirectory()
@@ -28,7 +46,7 @@ class WallpaperTest(unittest.TestCase):
         log.touch()
         for name in names:
             (tmp / name).write_bytes(b"image")
-        path = os.environ["PATH"]
+        path = path_without(tmp / "no-magick", "magick")
         if magick:
             # Stands in for ImageMagick: writes its last argument, so the fit step can be seen.
             bin_dir = tmp / "bin"
@@ -97,6 +115,28 @@ class WallpaperTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(commands, [])
         self.assertEqual(files, [])
+
+    def test_a_flag_without_its_value_stops_before_the_tv(self):
+        for args in (("--dim", "--replace"), ("--rotate", "--shuffle"), ("--crop", "")):
+            with self.subTest(args=args):
+                result, commands, files, _, _ = self.run_script(*args)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("needs a value", result.stderr)
+                self.assertEqual((commands, files), ([], []))
+
+    def test_names_differing_only_in_case_do_not_overwrite(self):
+        result, _, files, _, _ = self.run_script(names=("Beach.jpg", "beach.png"))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        walls = [f.lower().rsplit(".", 1)[0] for f in files if f != "home.conf"]
+        self.assertEqual(len(set(walls)), 2, files)
+
+    def test_dry_run_shows_the_names_a_real_run_pushes(self):
+        names = ("a.png", "a.jpg")
+        dry, _, _, _, _ = self.run_script("--dry-run", magick=True, names=names)
+        real, _, files, _, _ = self.run_script(magick=True, names=names)
+        self.assertEqual(dry.returncode, 0, dry.stdout + dry.stderr)
+        shown = sorted(line.split("wallpapers/")[1] for line in dry.stdout.splitlines() if "-> wallpapers/" in line)
+        self.assertEqual(shown, [f for f in files if f != "home.conf"])
 
     def test_needs_the_launcher(self):
         result, _, files, _, _ = self.run_script(installed=False)
