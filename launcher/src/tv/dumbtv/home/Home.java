@@ -16,6 +16,10 @@ import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.media.tv.TvInputManager;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.net.NetworkRequest;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -40,6 +44,9 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.File;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -62,6 +69,13 @@ public final class Home extends Activity implements Shelf.Listener {
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final ExecutorService colorIo = Executors.newSingleThreadExecutor();
     private final List<TextView> chips = new ArrayList<>();
+    private LinearLayout capsule;
+    private View capsuleSep;
+    private TextView netChip;
+    private ConnectivityManager cm;
+    private ConnectivityManager.NetworkCallback netWatch;
+    private boolean netOnline = true, netTesting;
+    private int netMbps = -1;
     private Config cfg;
     private TvInputManager tv;
     private int applied = -1, appsGeneration;
@@ -350,6 +364,7 @@ public final class Home extends Activity implements Shelf.Listener {
         f.addAction(Intent.ACTION_TIMEZONE_CHANGED);
         registerReceiver(time, f);
         tick();
+        startNetworkWatch();
     }
 
     @Override
@@ -366,6 +381,7 @@ public final class Home extends Activity implements Shelf.Listener {
         stopColorAnimation();
         targetColor = 0;
         unregisterReceiver(time);
+        stopNetworkWatch();
         if (moving != null) stopMoving();
     }
 
@@ -689,7 +705,15 @@ public final class Home extends Activity implements Shelf.Listener {
                 if (direction == View.FOCUS_DOWN && chips.contains(focused) && heroShown()) {
                     return hero;
                 }
-                if (direction == View.FOCUS_DOWN && (chips.contains(focused) || focused == hero)) {
+                if (direction == View.FOCUS_DOWN && chips.contains(focused)) {
+                    for (Row row : rows()) {
+                        ViewGroup tiles = row.tiles();
+                        if (tiles.getVisibility() == View.VISIBLE && tiles.getChildCount() > 0) {
+                            return tiles.getChildAt(0);
+                        }
+                    }
+                }
+                if (direction == View.FOCUS_DOWN && focused == hero) {
                     View remembered = rememberedTile(lastFocusedKind);
                     if (remembered != null) return remembered;
                     for (Row row : rows()) {
@@ -706,17 +730,23 @@ public final class Home extends Activity implements Shelf.Listener {
                     boolean grid = parent instanceof Grid;
                     int cols = grid ? ((Grid) parent).columns() : 1;
 
-                    // Left and right stop at the edge of a row instead of jumping away
-                    // from it: no tile of another row takes the focus.
+                    // Left and right wrap cleanly within the current visual row instead of
+                    // dead-ending or jumping to another row.
                     if (direction == View.FOCUS_LEFT) {
                         boolean edge = grid ? idx % cols == 0 : idx == 0;
-                        if (edge) return focused;
+                        if (edge) {
+                            int rowEnd = grid ? Math.min(((idx / cols) + 1) * cols - 1, count - 1) : count - 1;
+                            return rowEnd > idx ? parent.getChildAt(rowEnd) : focused;
+                        }
                     }
                     if (direction == View.FOCUS_RIGHT) {
                         boolean edge = grid
                                 ? (idx + 1) % cols == 0 || idx == count - 1
                                 : idx == count - 1;
-                        if (edge) return focused;
+                        if (edge) {
+                            int rowStart = grid ? (idx / cols) * cols : 0;
+                            return rowStart < idx ? parent.getChildAt(rowStart) : focused;
+                        }
                     }
 
                     // Up from the first line of the apps row goes to the library banner.
@@ -801,10 +831,34 @@ public final class Home extends Activity implements Shelf.Listener {
         under.leftMargin = dp(2);
         when.addView(meter, under);
         head.addView(when, new LinearLayout.LayoutParams(0, WRAP, 1f));
-        head.addView(chip(getString(R.string.options), R.drawable.chip_options, R.drawable.chip_options_mark,
+        capsule = new LinearLayout(this);
+        capsule.setOrientation(LinearLayout.HORIZONTAL);
+        capsule.setGravity(Gravity.CENTER_VERTICAL);
+        capsule.setClipChildren(false);
+        capsule.setClipToPadding(false);
+        netChip = chip(getString(R.string.network_wifi), R.drawable.chip_wifi, R.drawable.chip_wifi_mark,
+                v -> {
+                    if (!netOnline) openNetworkSettings();
+                    else runSpeedCheck();
+                });
+        netChip.setOnLongClickListener(v -> {
+            openNetworkSettings();
+            return true;
+        });
+        capsule.addView(netChip);
+        capsuleSep = new View(this);
+        capsuleSep.setBackgroundColor(0x22FFFFFF);
+        LinearLayout.LayoutParams capSepLp = new LinearLayout.LayoutParams(dp(1), dp(16));
+        capSepLp.leftMargin = dp(4);
+        capSepLp.rightMargin = dp(4);
+        capsule.addView(capsuleSep, capSepLp);
+        capsule.addView(chip(getString(R.string.options), R.drawable.chip_options, R.drawable.chip_options_mark,
                 v -> startActivity(new Intent(this, Options.class))));
-        head.addView(chip(getString(R.string.settings), R.drawable.chip_settings, R.drawable.chip_settings_mark,
+        capsule.addView(chip(getString(R.string.settings), R.drawable.chip_settings, R.drawable.chip_settings_mark,
                 v -> openSettings()));
+        LinearLayout.LayoutParams capLp = new LinearLayout.LayoutParams(WRAP, WRAP);
+        capLp.topMargin = dp(6);
+        head.addView(capsule, capLp);
         column.addView(head, new LinearLayout.LayoutParams(MATCH, WRAP));
         // Home position › Bottom: the page fills the screen (setFillViewport), and this stretch
         // takes what the banner and the rows leave of it, so they sit on the bottom edge. When
@@ -920,11 +974,16 @@ public final class Home extends Activity implements Shelf.Listener {
     }
 
     private boolean iconChips() {
-        return "icons".equals(cfg.get(Config.CHIPS));
+        String v = cfg.get("chips", "");
+        return v.isEmpty() ? tvStyle() : "icons".equals(v);
     }
 
     /** Text and padding for the chip style: the name always for text, on focus only for icons. */
     private void chipLook(TextView c, boolean focused) {
+        if (c == netChip) {
+            updateNetChipLook(focused);
+            return;
+        }
         if (!iconChips()) {
             c.setText(c.getContentDescription());
             c.setCompoundDrawablePadding(0);
@@ -933,7 +992,7 @@ public final class Home extends Activity implements Shelf.Listener {
         }
         c.setText(focused ? c.getContentDescription() : "");
         c.setCompoundDrawablePadding(focused ? dp(8) : 0);
-        c.setPadding(dp(10), dp(10), dp(focused ? 16 : 10), dp(10));
+        c.setPadding(dp(9), dp(8), dp(focused ? 14 : 9), dp(8));
     }
 
     private void apply() {
@@ -941,12 +1000,30 @@ public final class Home extends Activity implements Shelf.Listener {
         int accent = cfg.accent();
         boolean tv = tvStyle();
         boolean icons = iconChips();
+        if (icons) {
+            capsule.setBackground(Ui.roundStroke(0x12FFFFFF, 0x22FFFFFF, dp(1), dp(999)));
+            capsule.setPadding(dp(4), dp(4), dp(4), dp(4));
+            capsuleSep.setVisibility(locked() ? View.GONE : View.VISIBLE);
+        } else {
+            capsule.setBackground(null);
+            capsule.setPadding(0, 0, 0, 0);
+            capsuleSep.setVisibility(View.GONE);
+        }
+        capsule.setVisibility(locked() ? View.GONE : View.VISIBLE);
         for (TextView c : chips) {
-            Ui.focusStyle(c, accent, tv ? 0x1AFFFFFF : 0x14FFFFFF, dp(icons ? 21 : 18));
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) c.getLayoutParams();
+            lp.leftMargin = (icons || c == netChip) ? dp(icons ? 2 : 0) : dp(10);
+            lp.topMargin = 0;
+            c.setLayoutParams(lp);
+            c.setTextSize(tv ? 12 : 14);
+            if (c == netChip) {
+                updateNetChip();
+                continue;
+            }
+            Ui.focusStyle(c, accent, icons ? 0x00000000 : (tv ? 0x1AFFFFFF : 0x14FFFFFF), dp(icons ? 20 : 18));
             int[] art = (int[]) c.getTag();
             c.setCompoundDrawablesRelative(icons ? Ui.chipIcon(getDrawable(art[0]), getDrawable(art[1]),
-                    accent, dp(22)) : null, null, null, null);
-            c.setTextSize(tv ? 12 : 14);
+                    accent, dp(20)) : null, null, null, null);
             chipLook(c, c.isFocused());
             c.setVisibility(locked() ? View.GONE : View.VISIBLE);
         }
@@ -970,7 +1047,7 @@ public final class Home extends Activity implements Shelf.Listener {
         meter.setVisibility("on".equals(cfg.get(Config.MEMORY)) ? View.VISIBLE : View.GONE);
         meter.setAccent(accent);
         hero.setAccent(accent);
-        spacer.setVisibility(atBottom() ? View.VISIBLE : View.GONE);
+        spacer.setVisibility(!tv && atBottom() ? View.VISIBLE : View.GONE);
         apps.title.setText(getString("on".equals(cfg.get(Config.ALL_APPS))
                 ? R.string.row_pinned_apps : R.string.row_apps).toUpperCase(Locale.ROOT));
         String state = artState();
@@ -1630,6 +1707,172 @@ public final class Home extends Activity implements Shelf.Listener {
         }
         o.inJustDecodeBounds = false;
         return BitmapFactory.decodeFile(f.getPath(), o);
+    }
+
+    private void openNetworkSettings() {
+        Intent wifi = new Intent(Settings.ACTION_WIFI_SETTINGS);
+        if (wifi.resolveActivity(getPackageManager()) != null) {
+            launch(wifi, null);
+            return;
+        }
+        openSettings();
+    }
+
+    private void startNetworkWatch() {
+        if (cm == null) cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+        checkNetwork();
+        if (cm == null || netWatch != null) return;
+        netWatch = new ConnectivityManager.NetworkCallback() {
+            @Override public void onAvailable(Network n) { ui.post(Home.this::checkNetwork); }
+            @Override public void onLost(Network n) { ui.post(Home.this::checkNetwork); }
+            @Override public void onCapabilitiesChanged(Network n, NetworkCapabilities caps) {
+                ui.post(Home.this::checkNetwork);
+            }
+        };
+        try {
+            cm.registerNetworkCallback(new NetworkRequest.Builder()
+                    .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build(), netWatch);
+        } catch (RuntimeException ignored) {
+            netWatch = null;
+        }
+    }
+
+    private void stopNetworkWatch() {
+        if (cm != null && netWatch != null) {
+            try {
+                cm.unregisterNetworkCallback(netWatch);
+            } catch (RuntimeException ignored) {}
+            netWatch = null;
+        }
+    }
+
+    /**
+     * Checks physical transports (Wi-Fi / Ethernet / Cellular) rather than relying solely on the
+     * active network so a local VPN such as personalDNSfilter does not mask a dropped Wi-Fi link.
+     */
+    private boolean hasPhysicalInternet() {
+        if (cm == null) return true;
+        try {
+            for (Network n : cm.getAllNetworks()) {
+                NetworkCapabilities c = cm.getNetworkCapabilities(n);
+                if (c == null || !c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) continue;
+                if (c.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                        || c.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+                        || c.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (RuntimeException ignored) {
+            return true;
+        }
+    }
+
+    private void checkNetwork() {
+        boolean online = hasPhysicalInternet();
+        boolean changed = online != netOnline;
+        netOnline = online;
+        if (changed) {
+            netTesting = false;
+            if (!online) netMbps = -1;
+        }
+        if (netChip != null) updateNetChip();
+    }
+
+    private void updateNetChip() {
+        if (netChip == null || cfg == null) return;
+        boolean icons = iconChips();
+        int accent = cfg.accent();
+        int size = dp(20);
+        if (!netOnline) {
+            Ui.offlineStyle(netChip, dp(20), dp(1));
+            netChip.setCompoundDrawablesRelative(icons ? Ui.chipIconColors(
+                    getDrawable(R.drawable.chip_wifi_off), getDrawable(R.drawable.chip_wifi_off_mark),
+                    0xFF141108, 0xFFFDE68A, 0xFFFBBF24, size) : null, null, null, null);
+        } else {
+            Ui.focusStyle(netChip, accent, icons ? 0x00000000 : (tvStyle() ? 0x1AFFFFFF : 0x14FFFFFF),
+                    dp(icons ? 20 : 18));
+            netChip.setCompoundDrawablesRelative(icons ? Ui.chipIcon(
+                    getDrawable(R.drawable.chip_wifi), getDrawable(R.drawable.chip_wifi_mark),
+                    accent, size) : null, null, null, null);
+        }
+        updateNetChipLook(netChip.isFocused());
+        netChip.setVisibility(locked() ? View.GONE : View.VISIBLE);
+    }
+
+    private void updateNetChipLook(boolean focused) {
+        if (netChip == null) return;
+        boolean icons = iconChips();
+        if (!netOnline) {
+            String label = getString(focused ? R.string.network_offline_focus : R.string.network_offline);
+            netChip.setText(label);
+            netChip.setContentDescription(label);
+            netChip.setCompoundDrawablePadding(icons ? dp(7) : 0);
+            netChip.setPadding(dp(icons ? 10 : 14), dp(8), dp(icons ? 12 : 14), dp(8));
+            return;
+        }
+        String label = netTesting ? getString(R.string.network_testing)
+                : netMbps > 0 ? getString(R.string.network_mbps, netMbps)
+                : getString(R.string.network_wifi);
+        netChip.setContentDescription(label);
+        if (!icons) {
+            netChip.setText(label);
+            netChip.setCompoundDrawablePadding(0);
+            netChip.setPadding(dp(18), dp(9), dp(18), dp(9));
+            return;
+        }
+        boolean showLabel = focused || netTesting;
+        netChip.setText(showLabel ? label : "");
+        netChip.setCompoundDrawablePadding(showLabel ? dp(7) : 0);
+        netChip.setPadding(dp(9), dp(8), dp(showLabel ? 13 : 9), dp(8));
+    }
+
+    private void runSpeedCheck() {
+        if (netTesting) return;
+        netTesting = true;
+        updateNetChip();
+        io.execute(() -> {
+            int mbps = -1;
+            boolean ok = false;
+            HttpURLConnection conn = null;
+            try {
+                conn = (HttpURLConnection) new URL("https://speed.cloudflare.com/__down?bytes=2000000").openConnection();
+                conn.setConnectTimeout(4000);
+                conn.setReadTimeout(4000);
+                conn.setUseCaches(false);
+                long start = System.nanoTime();
+                long total = 0;
+                byte[] buf = new byte[16384];
+                try (InputStream in = conn.getInputStream()) {
+                    for (int n; (n = in.read(buf)) > 0; ) {
+                        total += n;
+                        if (System.nanoTime() - start > 3_000_000_000L) break;
+                    }
+                }
+                long elapsedNs = Math.max(1L, System.nanoTime() - start);
+                if (total > 0) {
+                    ok = true;
+                    mbps = Math.max(1, (int) Math.round((total * 8.0) / (elapsedNs / 1e9) / 1_000_000.0));
+                }
+            } catch (Exception ignored) {
+                ok = false;
+            } finally {
+                if (conn != null) conn.disconnect();
+            }
+            final boolean reached = ok;
+            final int speed = mbps;
+            ui.post(() -> {
+                netTesting = false;
+                if (reached) {
+                    netOnline = true;
+                    netMbps = speed;
+                } else {
+                    netOnline = false;
+                    netMbps = -1;
+                }
+                updateNetChip();
+            });
+        });
     }
 
     /**

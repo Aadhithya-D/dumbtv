@@ -19,7 +19,9 @@ final class Grid extends ViewGroup {
     int fixedColumns;
     boolean tray;
     private final android.graphics.Paint trayPaint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+    private final android.graphics.Paint trayGlass = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
     private final android.graphics.Paint trayEdge = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+    private final android.graphics.Paint traySheen = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
 
     Grid(Context c) {
         super(c);
@@ -27,10 +29,13 @@ final class Grid extends ViewGroup {
         setClipToPadding(false);
         hGap = Ui.dp(c, 18);
         vGap = Ui.dp(c, 18);
-        trayPaint.setColor(0x59000000);
+        trayPaint.setColor(0x5207080D);
+        trayGlass.setColor(0x0CFFFFFF);
         trayEdge.setStyle(android.graphics.Paint.Style.STROKE);
         trayEdge.setStrokeWidth(Ui.dp(c, 1));
-        trayEdge.setColor(0x14FFFFFF);
+        trayEdge.setColor(0x1CFFFFFF);
+        traySheen.setStyle(android.graphics.Paint.Style.STROKE);
+        traySheen.setStrokeWidth(Ui.dp(c, 1));
     }
 
     @Override
@@ -44,7 +49,12 @@ final class Grid extends ViewGroup {
             // A tile keeps room under its card for a name; the tray hugs the 16:9 card itself.
             float rt = last.getRight() + pad, b = first.getTop() + first.getWidth() * 9f / 16f + pad;
             canvas.drawRoundRect(l, t, rt, b, r, r, trayPaint);
+            canvas.drawRoundRect(l, t, rt, b, r, r, trayGlass);
             canvas.drawRoundRect(l, t, rt, b, r, r, trayEdge);
+            traySheen.setShader(new android.graphics.LinearGradient(l + r, t, rt - r, t,
+                    new int[] {0x00FFFFFF, 0x33FFFFFF, 0x00FFFFFF},
+                    new float[] {0f, 0.5f, 1f}, android.graphics.Shader.TileMode.CLAMP));
+            canvas.drawLine(l + r, t + Ui.dp(getContext(), 0.5f), rt - r, t + Ui.dp(getContext(), 0.5f), traySheen);
         }
         super.dispatchDraw(canvas);
     }

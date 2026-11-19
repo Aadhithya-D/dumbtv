@@ -47,6 +47,12 @@ final class Ui {
         return d;
     }
 
+    static GradientDrawable roundStroke(int fill, int stroke, int strokePx, float radius) {
+        GradientDrawable d = round(fill, radius);
+        d.setStroke(strokePx, stroke);
+        return d;
+    }
+
     /** Accent fill when focused, a faint fill otherwise. */
     static void focusStyle(TextView v, int accent, int idle, float radius) {
         StateListDrawable bg = new StateListDrawable();
@@ -56,13 +62,26 @@ final class Ui {
         v.setTextColor(focused(ink(accent), 0xD9FFFFFF));
     }
 
+    /** Warm muted-amber glass when offline; fills solid amber with dark ink on focus. */
+    static void offlineStyle(TextView v, float radius, int strokePx) {
+        StateListDrawable bg = new StateListDrawable();
+        bg.addState(new int[] {android.R.attr.state_focused}, round(0xF2FBBF24, radius));
+        bg.addState(new int[0], roundStroke(0x24F59E0B, 0x58FBBF24, strokePx, radius));
+        v.setBackground(bg);
+        v.setTextColor(focused(0xFF141108, 0xFFFDE68A));
+    }
+
     /**
      * A chip icon to go with {@link #focusStyle}: {@code shape} in the chip's text colour and
      * {@code mark} in the accent, both turning the ink colour on the accent fill when focused.
      */
     static Drawable chipIcon(Drawable shape, Drawable mark, int accent, int size) {
-        shape.mutate().setTintList(focused(ink(accent), 0xD9FFFFFF));
-        mark.mutate().setTintList(focused(ink(accent), accent));
+        return chipIconColors(shape, mark, ink(accent), 0xD9FFFFFF, accent, size);
+    }
+
+    static Drawable chipIconColors(Drawable shape, Drawable mark, int onInk, int offInk, int markOff, int size) {
+        shape.mutate().setTintList(focused(onInk, offInk));
+        mark.mutate().setTintList(focused(onInk, markOff));
         LayerDrawable d = new LayerDrawable(new Drawable[] {shape, mark});
         d.setBounds(0, 0, size, size);
         return d;
