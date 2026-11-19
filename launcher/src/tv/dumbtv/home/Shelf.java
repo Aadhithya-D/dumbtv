@@ -331,10 +331,15 @@ final class Shelf {
         return a.pkg.equals(b.pkg) && a.title.equals(b.title);
     }
 
+    /** One pin: the same title on other days or hours (Vishnu Sahasranamam on Monday and on Saturday) is another. */
+    private static boolean samePin(Entry a, Entry b) {
+        return same(a, b) && a.days.equals(b.days) && a.from == b.from && a.to == b.to;
+    }
+
     static synchronized void pin(Entry e, boolean on) {
         for (int i = pins.size() - 1; i >= 0; i--) {
             Entry p = pins.get(i);
-            if (same(p, e)) pins.remove(i);
+            if (samePin(p, e)) pins.remove(i);
         }
         if (on) pins.add(e);
         save();

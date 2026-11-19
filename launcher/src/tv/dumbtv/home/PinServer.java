@@ -90,7 +90,7 @@ final class PinServer {
             Map<String, String> form = form(new String(body, 0, got));
             String note = "";
             if (request.startsWith("POST /pin")) note = pin(form.get("link"), form.get("name"), form);
-            else if (request.startsWith("POST /unpin")) note = unpin(form.get("pkg"), form.get("title"));
+            else if (request.startsWith("POST /unpin")) note = unpin(form);
             if (request.startsWith("POST")) {
                 // Back to the page, so a refresh does not send the form again.
                 String loc = "/?note=" + Uri.encode(note);
@@ -170,11 +170,15 @@ final class PinServer {
         return "Pinned " + e.title + (e.scheduled() ? " for " + when(e) : "") + ".";
     }
 
-    private static String unpin(String pkg, String title) {
+    private static String unpin(Map<String, String> form) {
+        String pkg = form.get("pkg"), title = form.get("title");
         if (pkg == null || title == null) return "";
         Shelf.Entry e = new Shelf.Entry();
         e.pkg = pkg;
         e.title = title;
+        e.days = form.containsKey("days") ? form.get("days") : "";
+        e.from = form.containsKey("from") ? Integer.parseInt(form.get("from")) : -1;
+        e.to = form.containsKey("to") ? Integer.parseInt(form.get("to")) : -1;
         Shelf.pin(e, false);
         return "Unpinned " + title + ".";
     }
@@ -379,7 +383,11 @@ final class PinServer {
                     .append("<div class=t><b>").append(esc(e.title)).append("</b><span>").append(esc(appName(e.pkg)))
                     .append(e.scheduled() ? " · " + esc(when(e)) : "").append("</span></div>")
                     .append("<form method=post action=/unpin><input type=hidden name=pkg value='").append(esc(e.pkg))
-                    .append("'><input type=hidden name=title value='").append(esc(e.title)).append("'><button>Remove</button></form></div>");
+                    .append("'><input type=hidden name=title value='").append(esc(e.title))
+                    .append("'><input type=hidden name=days value='").append(esc(e.days))
+                    .append("'><input type=hidden name=from value='").append(e.from)
+                    .append("'><input type=hidden name=to value='").append(e.to)
+                    .append("'><button>Remove</button></form></div>");
         }
         return b.append("</body></html>").toString();
     }
