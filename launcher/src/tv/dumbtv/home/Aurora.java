@@ -20,12 +20,11 @@ final class Aurora extends Drawable {
     static final int BASE = 0xFF07080D;
     /** Centre x, centre y, radius x, radius y (fractions of the screen), and peak alpha. */
     private static final float[][] BANDS = {
-        {0.18f, 0.12f, 0.82f, 0.62f, 0.36f},
-        {0.62f, 0.24f, 0.78f, 0.64f, 0.38f},
-        {0.92f, 0.38f, 0.68f, 0.56f, 0.30f},
-        {0.24f, 0.76f, 0.60f, 0.40f, 0.20f},
+        {0.20f, 0.03f, 0.72f, 0.40f, 0.42f},
+        {0.58f, 0.09f, 0.68f, 0.42f, 0.42f},
+        {0.88f, 0.15f, 0.58f, 0.36f, 0.32f},
     };
-    private static final int[] CLASSIC = {0xFF1CC6AE, 0xFF4466F5, 0xFF9442DA, 0xFF4466F5};
+    private static final int[] CLASSIC = {0xFF1CC6AE, 0xFF4466F5, 0xFF9442DA};
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint vignette = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -44,7 +43,6 @@ final class Aurora extends Drawable {
             colors[0] = Color.HSVToColor(new float[] {(hsv[0] + 345f) % 360f, s * 0.85f, Math.min(1f, v + 0.08f)});
             colors[1] = Color.HSVToColor(new float[] {hsv[0], s * 0.9f, v});
             colors[2] = Color.HSVToColor(new float[] {(hsv[0] + 28f) % 360f, s * 0.85f, v});
-            colors[3] = Color.HSVToColor(new float[] {hsv[0], Math.min(1f, s * 0.95f), Math.min(1f, v + 0.05f)});
         }
         invalidateSelf();
     }

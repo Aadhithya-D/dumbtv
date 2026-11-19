@@ -29,6 +29,8 @@ final class Tile extends View {
     private final Path arrow = new Path();
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint ring = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint ringGap = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint ringGlow = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint dot = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final TextPaint inner = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final TextPaint under = new TextPaint(Paint.ANTI_ALIAS_FLAG);
@@ -56,6 +58,11 @@ final class Tile extends View {
         ring.setStyle(Paint.Style.STROKE);
         ring.setStrokeWidth(stroke);
         ring.setColor(accent);
+        ringGap.setStyle(Paint.Style.STROKE);
+        ringGap.setStrokeWidth(Ui.dp(c, 2.5f));
+        ringGap.setColor(0xEE07080D);
+        ringGlow.setStyle(Paint.Style.STROKE);
+        ringGlow.setStrokeWidth(Ui.dp(c, 5f));
         dot.setColor(0xFF34C759);
         inner.setColor(Ui.TEXT);
         inner.setTypeface(Ui.MEDIUM);
@@ -135,9 +142,17 @@ final class Tile extends View {
             canvas.drawCircle(cardW - r * 3, r * 3, r, dot);
         }
         if (isFocused() || moving) {
-            float half = stroke / 2;
+            float gap = Ui.dp(getContext(), 2.2f);
+            float out = gap + stroke / 2f;
+            int glowColor = item.backgroundColor != 0 ? item.backgroundColor : ring.getColor();
+            ringGlow.setColor((glowColor & 0x00FFFFFF) | 0x44000000);
+            canvas.drawRoundRect(-out, -out, cardW + out, cardH + out, radius + out, radius + out, ringGlow);
+            // Dark keyline separates white/light banners (e.g. Netflix, YouTube) from the focus ring.
+            float gHalf = ringGap.getStrokeWidth() / 2f;
+            canvas.drawRoundRect(-gHalf, -gHalf, cardW + gHalf, cardH + gHalf,
+                    radius + gHalf, radius + gHalf, ringGap);
             ring.setPathEffect(moving ? new DashPathEffect(new float[] {stroke * 3, stroke * 2}, 0) : null);
-            canvas.drawRoundRect(half, half, cardW - half, cardH - half, radius - half, radius - half, ring);
+            canvas.drawRoundRect(-out, -out, cardW + out, cardH + out, radius + out, radius + out, ring);
         }
         if (moving) drawArrows(canvas);
         boolean label = banner != null && (labelAlways || labelOnFocus && isFocused());

@@ -1001,7 +1001,7 @@ public final class Home extends Activity implements Shelf.Listener {
         boolean tv = tvStyle();
         boolean icons = iconChips();
         if (icons) {
-            capsule.setBackground(Ui.roundStroke(0x12FFFFFF, 0x22FFFFFF, dp(1), dp(999)));
+            capsule.setBackground(Ui.roundStroke(0x6B090A10, 0x2BFFFFFF, dp(1), dp(999)));
             capsule.setPadding(dp(4), dp(4), dp(4), dp(4));
             capsuleSep.setVisibility(locked() ? View.GONE : View.VISIBLE);
         } else {

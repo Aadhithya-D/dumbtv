@@ -29,11 +29,11 @@ final class Grid extends ViewGroup {
         setClipToPadding(false);
         hGap = Ui.dp(c, 18);
         vGap = Ui.dp(c, 18);
-        trayPaint.setColor(0x5207080D);
-        trayGlass.setColor(0x0CFFFFFF);
+        trayPaint.setColor(0x6607080D);
+        trayGlass.setColor(0x06FFFFFF);
         trayEdge.setStyle(android.graphics.Paint.Style.STROKE);
         trayEdge.setStrokeWidth(Ui.dp(c, 1));
-        trayEdge.setColor(0x1CFFFFFF);
+        trayEdge.setColor(0x20FFFFFF);
         traySheen.setStyle(android.graphics.Paint.Style.STROKE);
         traySheen.setStrokeWidth(Ui.dp(c, 1));
     }
