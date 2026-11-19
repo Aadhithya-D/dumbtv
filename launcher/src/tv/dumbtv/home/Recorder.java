@@ -118,6 +118,8 @@ public final class Recorder extends NotificationListenerService {
         void stop() {
             if (meta != null) record();
             controller.unregisterCallback(this);
+            // Stremio keeps its own Continue Watching: fetch it now that playback ended.
+            if (Stremio.PKG.equals(pkg)) disk.execute(() -> Stremio.refresh(Shelf.dir(), true));
         }
 
         boolean playing() {
@@ -140,6 +142,7 @@ public final class Recorder extends NotificationListenerService {
             if (s != null && was != playing()) {
                 debug(pkg, "state", meta, state);
                 record();
+                if (was && Stremio.PKG.equals(pkg)) disk.execute(() -> Stremio.refresh(Shelf.dir(), true));
             }
         }
 

@@ -189,6 +189,15 @@ final class Shelf {
         return out;
     }
 
+    /** An app's whole Continue Watching from its account (Stremio), replacing the last one. */
+    static void watching(String pkg, List<Entry> list) {
+        synchronized (Shelf.class) {
+            watching.put(pkg, new ArrayList<>(list));
+            save();
+        }
+        changed(pkg);
+    }
+
     /** A title an app played, from {@link Recorder}: moves to the front of that app's list. */
     static void played(Entry e) {
         if (e == null || e.pkg == null || e.title == null) return;
