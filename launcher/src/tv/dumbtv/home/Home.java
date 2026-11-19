@@ -68,13 +68,16 @@ public final class Home extends Activity implements Shelf.Listener {
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final ExecutorService colorIo = Executors.newSingleThreadExecutor();
+    /** Reachability checks and the speed test: they block for seconds, so they stay off {@code io}. */
+    private final ExecutorService net = Executors.newSingleThreadExecutor();
     private final List<TextView> chips = new ArrayList<>();
     private LinearLayout capsule;
     private View capsuleSep;
     private TextView netChip, wallChip;
     private ConnectivityManager cm;
     private ConnectivityManager.NetworkCallback netWatch;
-    private boolean netOnline = true, netTesting;
+    /** One reachability check at a time; callbacks during one ask for a single re-run after it. */
+    private boolean netOnline = true, netTesting, netChecking, netRecheck;
     private int netMbps = -1;
     private Config cfg;
     private TvInputManager tv;
@@ -101,7 +104,6 @@ public final class Home extends Activity implements Shelf.Listener {
     private final Aurora aurora = new Aurora();
     private View dim;
     private boolean expanded;
-    private TextView greet;
     /** Top Shelf: the focused app's titles above the apps, in Apple TV style. */
     private LinearLayout shelf, shelfStrip;
     private TextView shelfLabel, spotDesc;
@@ -109,7 +111,6 @@ public final class Home extends Activity implements Shelf.Listener {
     private Tile shelfOwner;
     private String shelfKey = "";
     private LinearLayout line;
-    private View sep;
     private static final int SPOT_BASE = 0xFF0A0A0D;
     private LinearLayout head;
     private TextView clock, date;
@@ -397,6 +398,7 @@ public final class Home extends Activity implements Shelf.Listener {
         if (tv != null) tv.unregisterCallback(inputWatch);
         io.shutdownNow();
         colorIo.shutdownNow();
+        net.shutdownNow();
         super.onDestroy();
     }
 
@@ -816,26 +818,14 @@ public final class Home extends Activity implements Shelf.Listener {
         head.setPadding(dp(56), 0, dp(56), dp(12));
         LinearLayout when = new LinearLayout(this);
         when.setOrientation(LinearLayout.VERTICAL);
-        greet = Ui.text(this, 12, Ui.MUTED, Ui.MEDIUM);
-        greet.setLetterSpacing(0.18f);
-        greet.setPadding(dp(2), 0, 0, dp(2));
-        greet.setVisibility(View.GONE);
         clock = Ui.text(this, 52, Ui.TEXT, Ui.LIGHT);
         clock.setFontFeatureSettings("tnum");
         date = Ui.text(this, 15, Ui.MUTED, Ui.MEDIUM);
         date.setPadding(dp(2), dp(8), 0, 0);
         line = new LinearLayout(this);
         line.setOrientation(LinearLayout.VERTICAL);
-        sep = new View(this);
-        sep.setBackgroundColor(0x4DFFFFFF);
-        sep.setVisibility(View.GONE);
-        LinearLayout.LayoutParams sepLp = new LinearLayout.LayoutParams(dp(1), dp(22));
-        sepLp.leftMargin = dp(16);
-        sepLp.rightMargin = dp(16);
         line.addView(clock, new LinearLayout.LayoutParams(WRAP, WRAP));
-        line.addView(sep, sepLp);
         line.addView(date, new LinearLayout.LayoutParams(WRAP, WRAP));
-        when.addView(greet);
         when.addView(line);
         meter = new Meter(this);
         meter.setWords(getString(R.string.meter_title), getString(R.string.meter_free),
@@ -1051,18 +1041,8 @@ public final class Home extends Activity implements Shelf.Listener {
             chipLook(c, c.isFocused());
             c.setVisibility(locked() ? View.GONE : View.VISIBLE);
         }
-        greet.setVisibility(View.GONE);
+        // Apple TV style keeps the top left clear; Classic shows the clock and date there.
         line.setVisibility(tv ? View.GONE : View.VISIBLE);
-        line.setOrientation(LinearLayout.VERTICAL);
-        line.setGravity(Gravity.NO_GRAVITY);
-        line.setPadding(0, 0, 0, 0);
-        line.setBackground(null);
-        sep.setVisibility(View.GONE);
-        clock.setTextSize(52);
-        date.setTextSize(15);
-        date.setAllCaps(false);
-        date.setLetterSpacing(0f);
-        date.setPadding(dp(2), dp(8), 0, 0);
         // The shelf's log reader and pin page only run while Top Shelf is on (in Apple TV style).
         if (tv && !"off".equals(cfg.get(Config.SHELF))) Shelf.start(this);
         apps.grid.fixedColumns = tv ? Integer.parseInt(cfg.get(Config.COLUMNS)) : 0;
@@ -1637,8 +1617,6 @@ public final class Home extends Activity implements Shelf.Listener {
             clock.setText(DateFormat.format("h:mm", now));
             clock.append(half);
         }
-        int hour = Integer.parseInt(DateFormat.format("H", now).toString());
-        greet.setText(hour < 5 ? "GOOD EVENING" : hour < 12 ? "GOOD MORNING" : hour < 17 ? "GOOD AFTERNOON" : "GOOD EVENING");
         Locale locale = Locale.getDefault();
         date.setText(DateFormat.format(DateFormat.getBestDateTimePattern(locale, "EEEEdMMMM"), now));
         if (meter.getVisibility() == View.VISIBLE) {
@@ -1886,7 +1864,14 @@ public final class Home extends Activity implements Shelf.Listener {
         // Physical link is up; verify real internet reachability in the background so a router
         // without internet still flips to Offline automatically without needing a click.
         if (netChip != null) updateNetChip();
-        io.execute(() -> {
+        // Wi-Fi reports capability changes often; with no internet each check waits the full
+        // timeout, so a burst of callbacks becomes one check now and at most one after it.
+        if (netChecking) {
+            netRecheck = true;
+            return;
+        }
+        netChecking = true;
+        net.execute(() -> {
             boolean reachable = false;
             try (java.net.Socket s = new java.net.Socket()) {
                 s.connect(new java.net.InetSocketAddress("1.1.1.1", 443), 2500);
@@ -1903,6 +1888,11 @@ public final class Home extends Activity implements Shelf.Listener {
                         netMbps = -1;
                     }
                     if (netChip != null) updateNetChip();
+                }
+                netChecking = false;
+                if (netRecheck) {
+                    netRecheck = false;
+                    checkNetwork();
                 }
             });
         });
@@ -1961,7 +1951,7 @@ public final class Home extends Activity implements Shelf.Listener {
         if (netTesting) return;
         netTesting = true;
         updateNetChip();
-        io.execute(() -> {
+        net.execute(() -> {
             int mbps = -1;
             boolean ok = false;
             HttpURLConnection conn = null;
