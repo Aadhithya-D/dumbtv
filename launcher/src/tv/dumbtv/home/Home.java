@@ -1089,24 +1089,17 @@ public final class Home extends Activity implements Shelf.Listener {
             c.setVisibility(locked() ? View.GONE : View.VISIBLE);
         }
         greet.setVisibility(View.GONE);
-        line.setOrientation(tv ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
-        line.setGravity(tv ? Gravity.CENTER_VERTICAL : Gravity.NO_GRAVITY);
-        if (tv) {
-            line.setPadding(dp(16), dp(9), dp(16), dp(9));
-            line.setBackground(Ui.liquidGlass(0x36FFFFFF, 0x16FFFFFF, 0x50FFFFFF, dp(1), dp(999)));
-            LinearLayout.LayoutParams lineLp = new LinearLayout.LayoutParams(WRAP, WRAP);
-            lineLp.topMargin = dp(6);
-            line.setLayoutParams(lineLp);
-        } else {
-            line.setPadding(0, 0, 0, 0);
-            line.setBackground(null);
-        }
-        sep.setVisibility(tv ? View.VISIBLE : View.GONE);
-        clock.setTextSize(tv ? 20 : 52);
-        date.setTextSize(tv ? 12 : 15);
-        date.setAllCaps(tv);
-        date.setLetterSpacing(tv ? 0.14f : 0f);
-        date.setPadding(tv ? 0 : dp(2), tv ? 0 : dp(8), 0, 0);
+        line.setVisibility(tv ? View.GONE : View.VISIBLE);
+        line.setOrientation(LinearLayout.VERTICAL);
+        line.setGravity(Gravity.NO_GRAVITY);
+        line.setPadding(0, 0, 0, 0);
+        line.setBackground(null);
+        sep.setVisibility(View.GONE);
+        clock.setTextSize(52);
+        date.setTextSize(15);
+        date.setAllCaps(false);
+        date.setLetterSpacing(0f);
+        date.setPadding(dp(2), dp(8), 0, 0);
         // The shelf's log reader and pin page only run while Top Shelf is on (in Apple TV style).
         if (tv && !"off".equals(cfg.get(Config.SHELF))) Shelf.start(this);
         apps.grid.fixedColumns = tv ? Integer.parseInt(cfg.get(Config.COLUMNS)) : 0;
@@ -1798,16 +1791,13 @@ public final class Home extends Activity implements Shelf.Listener {
         });
     }
 
-    /** Rebuilds the real optical Liquid Glass bitmaps for the dock, clock pill and top-right capsule. */
+    /** Rebuilds the real optical Liquid Glass bitmaps for the dock and top-right capsule. */
     private void refreshLiquidGlass() {
         final int gen = ++glassGeneration;
         if (wallBitmap == null || wallBitmap.isRecycled()) {
             if (apps != null) apps.grid.setGlassBitmap(null);
             if (capsule != null && iconChips()) {
                 capsule.setBackground(Ui.liquidGlass(0x36FFFFFF, 0x16FFFFFF, 0x50FFFFFF, dp(1), dp(999)));
-            }
-            if (line != null && tvStyle()) {
-                line.setBackground(Ui.liquidGlass(0x36FFFFFF, 0x16FFFFFF, 0x50FFFFFF, dp(1), dp(999)));
             }
             return;
         }
@@ -1825,29 +1815,16 @@ public final class Home extends Activity implements Shelf.Listener {
             } else {
                 capRect = null;
             }
-            final Rect clockRect;
-            if (line != null && tvStyle() && line.getWidth() > 0 && line.getHeight() > 0) {
-                int[] at = new int[2];
-                line.getLocationOnScreen(at);
-                clockRect = new Rect(at[0], at[1], at[0] + line.getWidth(), at[1] + line.getHeight());
-            } else {
-                clockRect = null;
-            }
             final float dockR = dp(28);
             final float capR = capRect != null ? capRect.height() * 0.5f : dp(20);
-            final float clockR = clockRect != null ? clockRect.height() * 0.5f : dp(20);
             io.execute(() -> {
                 Bitmap dockBmp = dockRect != null ? LiquidGlass.render(src, sw, sh, dockRect, dockR) : null;
                 Bitmap capBmp = capRect != null ? LiquidGlass.render(src, sw, sh, capRect, capR) : null;
-                Bitmap clockBmp = clockRect != null ? LiquidGlass.render(src, sw, sh, clockRect, clockR) : null;
                 ui.post(() -> {
                     if (gen != glassGeneration) return;
                     if (apps != null) apps.grid.setGlassBitmap(dockBmp);
                     if (capsule != null && iconChips() && capBmp != null) {
                         capsule.setBackground(new android.graphics.drawable.BitmapDrawable(getResources(), capBmp));
-                    }
-                    if (line != null && tvStyle() && clockBmp != null) {
-                        line.setBackground(new android.graphics.drawable.BitmapDrawable(getResources(), clockBmp));
                     }
                 });
             });
