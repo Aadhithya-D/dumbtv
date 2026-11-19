@@ -118,10 +118,24 @@ final class Shelf {
     static void enrich() {
         List<Entry> missing = new ArrayList<>();
         synchronized (Shelf.class) {
-            for (List<Entry> list : played.values()) for (Entry e : list) if (e.image == null) missing.add(e);
+            for (List<Entry> list : played.values()) {
+                for (Entry e : list) {
+                    if (e.image == null || SunNxt.PKG.equals(e.pkg) && e.link == null) missing.add(e);
+                }
+            }
         }
         boolean any = false;
         for (Entry e : missing) {
+            if (SunNxt.PKG.equals(e.pkg) && e.link == null) {
+                String had = e.link;
+                SunNxt.enrich(dir(), e);
+                if (e.link != null && !e.link.equals(had)) {
+                    any = true;
+                    changed(e.pkg);
+                    continue;
+                }
+            }
+            if (e.image != null) continue;
             String img = Tmdb.backdrop(dir(), e.title);
             if (img == null) continue;
             synchronized (Shelf.class) {
@@ -203,6 +217,8 @@ final class Shelf {
         if (e == null || e.pkg == null || e.title == null) return;
         // No picture from the app: TMDB's backdrop for the title, when a key is set (network,
         // so this runs on the Recorder's own thread; answers are cached).
+        // Sun NXT: its own id (a link straight to the title) and its own cover, by title.
+        if (e.link == null) SunNxt.enrich(dir(), e);
         if (e.image == null) e.image = Tmdb.backdrop(dir(), e.title);
         synchronized (Shelf.class) {
             List<Entry> list = played.get(e.pkg);
