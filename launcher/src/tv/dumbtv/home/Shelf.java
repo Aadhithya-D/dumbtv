@@ -124,6 +124,8 @@ final class Shelf {
     private static Listener listener;
     private static File dir;
     private static boolean started, opened;
+    /** The app's private folder, which no other app can read: where account keys live. */
+    private static File secrets;
 
     private Shelf() {}
 
@@ -134,10 +136,39 @@ final class Shelf {
         // Next to home.conf, so it can be backed up and read with adb like the settings.
         File ext = c.getExternalFilesDir(null);
         dir = ext != null ? ext : c.getFilesDir();
+        secrets = c.getFilesDir();
+        for (String name : SECRETS) secret(name);
         if (ext != null && !new File(ext, "shelf.json").isFile() && new File(c.getFilesDir(), "shelf.json").isFile()) {
             new File(c.getFilesDir(), "shelf.json").renameTo(new File(ext, "shelf.json"));
         }
         load();
+    }
+
+    /** Keys and sign-ins for TMDB, Stremio and Jellyfin. */
+    private static final String[] SECRETS = {"tmdb.key", "stremio.auth", "jellyfin.json"};
+
+    /**
+     * A key file, from the app's private folder. On Android 9 the shared folder next to
+     * shelf.json can be read by any app with storage permission, so a key copied there over
+     * adb is moved into the private folder the first time it is read, and its shared copy
+     * deleted. Returns the private file (it may not exist).
+     */
+    static synchronized File secret(String name) {
+        if (secrets == null) return null;
+        File priv = new File(secrets, name);
+        File shared = dir == null || dir.equals(secrets) ? null : new File(dir, name);
+        if (shared != null && shared.isFile()) {
+            File part = new File(secrets, name + ".part");
+            try (InputStream in = new java.io.FileInputStream(shared); OutputStream out = new FileOutputStream(part)) {
+                byte[] buf = new byte[8192];
+                for (int n; (n = in.read(buf)) > 0; ) out.write(buf, 0, n);
+            } catch (Exception e) {
+                part.delete();
+                return priv;
+            }
+            if (part.renameTo(priv)) shared.delete();
+        }
+        return priv;
     }
 
     /** Gives saved titles without a picture one from TMDB. Network: not on the UI thread. */

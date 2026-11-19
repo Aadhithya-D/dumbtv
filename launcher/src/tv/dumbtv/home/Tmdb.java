@@ -102,8 +102,8 @@ final class Tmdb {
     }
 
     private static String key(File dir) {
-        File f = new File(dir, "tmdb.key");
-        if (!f.isFile()) return null;
+        File f = Shelf.secret("tmdb.key");
+        if (f == null || !f.isFile()) return null;
         try (InputStream in = new FileInputStream(f)) {
             String k = read(in).trim();
             return k.matches("[0-9a-f]{32}") ? k : null;

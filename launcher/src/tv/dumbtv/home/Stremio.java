@@ -135,8 +135,8 @@ final class Stremio {
     }
 
     private static String key(File dir) {
-        File f = new File(dir, "stremio.auth");
-        if (!f.isFile()) return null;
+        File f = Shelf.secret("stremio.auth");
+        if (f == null || !f.isFile()) return null;
         try (InputStream in = new FileInputStream(f)) {
             String k = read(in).trim();
             return k.isEmpty() ? null : k;

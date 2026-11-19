@@ -165,8 +165,8 @@ final class Jellyfin {
     }
 
     private static JSONObject conf(File dir) {
-        File f = new File(dir, "jellyfin.json");
-        if (!f.isFile()) return null;
+        File f = Shelf.secret("jellyfin.json");
+        if (f == null || !f.isFile()) return null;
         try (InputStream in = new FileInputStream(f)) {
             return new JSONObject(read(in));
         } catch (Exception e) {
