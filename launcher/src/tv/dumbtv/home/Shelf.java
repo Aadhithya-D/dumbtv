@@ -212,6 +212,15 @@ final class Shelf {
      */
     static final java.util.Set<String> UNRECORDED = new HashSet<>(java.util.Arrays.asList("in.startv.hotstar"));
 
+    /** Top Shelf switched off for one app from its tile menu: home.conf shelf.off.<package>. */
+    static boolean hidden(Config cfg, String pkg) {
+        return cfg != null && "1".equals(cfg.get("shelf.off." + pkg, ""));
+    }
+
+    static void setHidden(Config cfg, String pkg, boolean off) {
+        cfg.set("shelf.off." + pkg, off ? "1" : "");
+    }
+
     /** Drops what was recorded for apps that are no longer recorded. */
     static void forgetUnrecorded() {
         boolean any = false;

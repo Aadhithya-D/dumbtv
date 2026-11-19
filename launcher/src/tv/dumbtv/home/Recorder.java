@@ -14,7 +14,6 @@ import android.service.notification.NotificationListenerService;
 
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.FileWriter;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -112,7 +111,6 @@ public final class Recorder extends NotificationListenerService {
             controller.registerCallback(this, main);
             meta = controller.getMetadata();
             state = controller.getPlaybackState();
-            debug(pkg, "session", meta, state);
             if (playing()) record();
         }
 
@@ -120,8 +118,7 @@ public final class Recorder extends NotificationListenerService {
             if (meta != null) record();
             controller.unregisterCallback(this);
             // Stremio keeps its own Continue Watching: fetch it now that playback ended.
-            if (Stremio.PKG.equals(pkg)) disk.execute(() -> Stremio.refresh(Shelf.dir(), true));
-            if (Jellyfin.PKG.equals(pkg)) disk.execute(() -> Jellyfin.refresh(Shelf.dir(), true));
+            accounts(pkg);
         }
 
         boolean playing() {
@@ -133,7 +130,6 @@ public final class Recorder extends NotificationListenerService {
             // The title that was playing keeps its last position before the next one takes over.
             if (meta != null && !sameTitle(meta, m)) record();
             meta = m;
-            debug(pkg, "metadata", meta, state);
             if (playing()) record();
         }
 
@@ -142,10 +138,8 @@ public final class Recorder extends NotificationListenerService {
             boolean was = playing();
             state = s;
             if (s != null && was != playing()) {
-                debug(pkg, "state", meta, state);
                 record();
-                if (was && Stremio.PKG.equals(pkg)) disk.execute(() -> Stremio.refresh(Shelf.dir(), true));
-                if (was && Jellyfin.PKG.equals(pkg)) disk.execute(() -> Jellyfin.refresh(Shelf.dir(), true));
+                if (was) accounts(pkg);
             }
         }
 
@@ -157,7 +151,7 @@ public final class Recorder extends NotificationListenerService {
 
         /** Hands the current title to the shelf, with its picture saved next to shelf.json. */
         void record() {
-            if (Shelf.UNRECORDED.contains(pkg)) return;
+            if (Shelf.UNRECORDED.contains(pkg) || Shelf.hidden(Config.get(Recorder.this), pkg)) return;
             final Shelf.Entry e = entry();
             if (e == null) return;
             final Bitmap art = art(meta);
@@ -233,6 +227,18 @@ public final class Recorder extends NotificationListenerService {
         return null;
     }
 
+    /**
+     * Stremio and Jellyfin keep their own Continue Watching on a server, which saves the
+     * position a few seconds after playback stops: fetch now, and again 20 s later.
+     */
+    private void accounts(String pkg) {
+        Runnable fetch = Stremio.PKG.equals(pkg) ? () -> Stremio.refresh(Shelf.dir(), true)
+                : Jellyfin.PKG.equals(pkg) ? () -> Jellyfin.refresh(Shelf.dir(), true) : null;
+        if (fetch == null) return;
+        disk.execute(fetch);
+        main.postDelayed(() -> disk.execute(fetch), 20_000);
+    }
+
     private static boolean sameTitle(MediaMetadata a, MediaMetadata b) {
         if (b == null) return false;
         String x = text(a, MediaMetadata.METADATA_KEY_DISPLAY_TITLE, MediaMetadata.METADATA_KEY_TITLE);
@@ -275,38 +281,5 @@ public final class Recorder extends NotificationListenerService {
             return null;
         }
         return part.renameTo(f) ? "file:" + f.getPath() : null;
-    }
-
-    /**
-     * What each app announces, for checking which apps give a title, picture and position.
-     * A small rolling file next to shelf.json; it never leaves the TV.
-     */
-    private void debug(String pkg, String why, MediaMetadata m, PlaybackState s) {
-        final StringBuilder line = new StringBuilder();
-        line.append(System.currentTimeMillis()).append(' ').append(pkg).append(' ').append(why);
-        if (s != null) line.append(" state=").append(s.getState()).append(" pos=").append(s.getPosition());
-        if (m != null) {
-            for (String k : m.keySet()) {
-                line.append(" | ").append(k.replace("android.media.metadata.", "")).append('=');
-                Bitmap b = m.getBitmap(k);
-                if (b != null) line.append("bitmap ").append(b.getWidth()).append('x').append(b.getHeight());
-                else {
-                    CharSequence t = m.getText(k);
-                    if (t != null) line.append(t.length() > 120 ? t.subSequence(0, 120) + "…" : t);
-                    else line.append(m.getLong(k));
-                }
-            }
-        }
-        disk.execute(() -> {
-            File dir = Shelf.dir();
-            if (dir == null) return;
-            File f = new File(dir, "played-debug.txt");
-            if (f.length() > 256_000) f.renameTo(new File(dir, "played-debug.old.txt"));
-            try (FileWriter w = new FileWriter(f, true)) {
-                w.write(line.append('\n').toString());
-            } catch (Exception ignored) {
-                // debugging only
-            }
-        });
     }
 }

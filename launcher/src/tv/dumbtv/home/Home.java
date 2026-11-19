@@ -374,7 +374,7 @@ public final class Home extends Activity implements Shelf.Listener {
         tick();
         startNetworkWatch();
         scheduleWallRotate();
-        // Accounts with their own Continue Watching (Stremio): fetched on return, at most every 2 min.
+        // Accounts with their own Continue Watching (Stremio, Jellyfin): fetched on return, at most every 30 s.
         if (tvStyle() && !"off".equals(cfg.get(Config.SHELF))) {
             net.execute(() -> Stremio.refresh(Shelf.dir(), false));
             net.execute(() -> Jellyfin.refresh(Shelf.dir(), false));
@@ -1359,7 +1359,8 @@ public final class Home extends Activity implements Shelf.Listener {
         shelfOwner = owner;
         int cols = Math.max(1, apps.grid.fixedColumns);
         // The shelf scrolls, so it takes more than a screen's width of titles.
-        List<Shelf.Entry> list = Shelf.forApp(owner.item.id, 10);
+        List<Shelf.Entry> list = Shelf.hidden(cfg, owner.item.id)
+                ? new ArrayList<>() : Shelf.forApp(owner.item.id, 10);
         StringBuilder key = new StringBuilder(owner.item.id);
         for (Shelf.Entry e : list) key.append('|').append(e.title).append(Shelf.pinned(e) ? "*" : "");
         if (key.toString().equals(shelfKey)) return;
@@ -2201,6 +2202,9 @@ public final class Home extends Activity implements Shelf.Listener {
         menu.add(R.string.tile_rename);
         if (icon) menu.add(R.string.tile_icon);
         menu.add(pinning ? R.string.tile_unpin : R.string.tile_hide);
+        // Top Shelf for this one app: off stops recording it and hides its shelf.
+        boolean shelfOn = app && tvStyle() && !"off".equals(cfg.get(Config.SHELF));
+        if (shelfOn) menu.add(Shelf.hidden(cfg, t.item.id) ? R.string.tile_shelf_on : R.string.tile_shelf_off);
         if (app) menu.add(R.string.tile_app_info);
         String[] actions = new String[menu.size()];
         for (int i = 0; i < actions.length; i++) actions[i] = getString(menu.get(i));
@@ -2230,6 +2234,15 @@ public final class Home extends Activity implements Shelf.Listener {
                             Catalog.setShown(cfg, t.kind, t.item, false);
                             render(app ? apps : inputs);
                             Toast.makeText(this, pinning ? R.string.unpinned_toast : R.string.hidden_toast,
+                                    Toast.LENGTH_SHORT).show();
+                            break;
+                        case R.string.tile_shelf_off:
+                        case R.string.tile_shelf_on:
+                            boolean off = menu.get(which) == R.string.tile_shelf_off;
+                            Shelf.setHidden(cfg, t.item.id, off);
+                            shelfKey = "";
+                            showShelf(t);
+                            Toast.makeText(this, off ? R.string.shelf_off_toast : R.string.shelf_on_toast,
                                     Toast.LENGTH_SHORT).show();
                             break;
                         default:

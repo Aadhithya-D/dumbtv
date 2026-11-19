@@ -25,7 +25,7 @@ import java.util.List;
 final class Stremio {
     static final String PKG = "com.stremio.one";
     private static final String API = "https://api.strem.io/api/datastoreGet";
-    private static final long EVERY_MS = 2 * 60_000;
+    private static final long EVERY_MS = 30_000;
     private static long last;
 
     private Stremio() {}

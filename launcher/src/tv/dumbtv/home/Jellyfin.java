@@ -22,7 +22,7 @@ import java.util.List;
  */
 final class Jellyfin {
     static final String PKG = "org.jellyfin.androidtv";
-    private static final long EVERY_MS = 2 * 60_000;
+    private static final long EVERY_MS = 30_000;
     private static long last;
 
     private Jellyfin() {}

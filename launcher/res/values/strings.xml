@@ -221,4 +221,8 @@
     <string name="desc_amazon">Show Amazon\'s own home screen once. Home on the remote brings dumbtv back.</string>
     <string name="recorder_label">dumbtv home Top Shelf (what apps play)</string>
     <string name="opt_tmdb_credit">Pictures for titles whose app sends none come from TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.</string>
+    <string name="tile_shelf_off">Turn off Top Shelf for this app</string>
+    <string name="tile_shelf_on">Turn on Top Shelf for this app</string>
+    <string name="shelf_off_toast">Top Shelf off for this app: nothing is recorded or shown</string>
+    <string name="shelf_on_toast">Top Shelf on for this app</string>
 </resources>
