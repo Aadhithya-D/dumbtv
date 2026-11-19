@@ -85,10 +85,19 @@ public final class Home extends Activity implements Shelf.Listener {
     private String lastFocusedKind;
     private final Map<String, String> lastIds = new HashMap<>();
     private FrameLayout root;
+    private ScrollView scroll;
     private LinearLayout column;
-    private ImageView wall;
+    private ImageView wallPrev, wall;
     private View shade;
     private View tint;
+    private LinearLayout saverOverlay;
+    private TextView saverClock, saverDate;
+    private boolean saverActive;
+    private int saverStep;
+    private static final long IDLE_SAVER_MS = 60_000L;
+    private static final long SAVER_SLIDE_MS = 20_000L;
+    private final Runnable enterSaver = this::enterSaver;
+    private final Runnable saverAdvance = this::advanceSaver;
     /** Spotlight: the focused app's colour as a glow in the top right, fading to near black. */
     private GradientDrawable glow;
     private LinearLayout spot;
@@ -365,6 +374,7 @@ public final class Home extends Activity implements Shelf.Listener {
         registerReceiver(time, f);
         tick();
         startNetworkWatch();
+        pokeIdle();
     }
 
     @Override
@@ -382,6 +392,7 @@ public final class Home extends Activity implements Shelf.Listener {
         targetColor = 0;
         unregisterReceiver(time);
         stopNetworkWatch();
+        stopIdleSaver();
         if (moving != null) stopMoving();
     }
 
@@ -425,6 +436,11 @@ public final class Home extends Activity implements Shelf.Listener {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
+        if (saverActive) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN) exitSaver();
+            return true;
+        }
+        if (e.getAction() == KeyEvent.ACTION_DOWN) pokeIdle();
         if (moving == null) return super.dispatchKeyEvent(e);
         if (e.getAction() == KeyEvent.ACTION_DOWN) {
             switch (e.getKeyCode()) {
@@ -571,6 +587,9 @@ public final class Home extends Activity implements Shelf.Listener {
 
     private View build() {
         root = new FrameLayout(this);
+        wallPrev = new ImageView(this);
+        wallPrev.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        root.addView(wallPrev, new FrameLayout.LayoutParams(MATCH, MATCH));
         wall = new ImageView(this);
         wall.setScaleType(ImageView.ScaleType.CENTER_CROP);
         root.addView(wall, new FrameLayout.LayoutParams(MATCH, MATCH));
@@ -592,6 +611,7 @@ public final class Home extends Activity implements Shelf.Listener {
         spotTitle = Ui.text(this, 60, Ui.TEXT, android.graphics.Typeface.DEFAULT_BOLD);
         spotTitle.setLetterSpacing(-0.02f);
         spotTitle.setSingleLine(true);
+        spotTitle.setShadowLayer(dp(10), 0, dp(2), 0x99000000);
         spot.addView(spotTitle);
         spotDesc = Ui.text(this, 14, Ui.MUTED, Ui.MEDIUM);
         spotDesc.setMaxLines(1);
@@ -685,6 +705,7 @@ public final class Home extends Activity implements Shelf.Listener {
         scroll.setVerticalScrollBarEnabled(false);
         scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
         scroll.setClipChildren(false);
+        this.scroll = scroll;
         root.addView(scroll, new FrameLayout.LayoutParams(MATCH, MATCH));
 
         LinearLayout column = new LinearLayout(this) {
@@ -805,8 +826,10 @@ public final class Home extends Activity implements Shelf.Listener {
         greet = Ui.text(this, 12, Ui.MUTED, Ui.MEDIUM);
         greet.setLetterSpacing(0.18f);
         greet.setPadding(dp(2), 0, 0, dp(2));
+        greet.setShadowLayer(dp(6), 0, dp(1), 0x88000000);
         greet.setVisibility(View.GONE);
         clock = Ui.text(this, 52, Ui.TEXT, Ui.LIGHT);
+        clock.setShadowLayer(dp(8), 0, dp(2), 0x88000000);
         date = Ui.text(this, 15, Ui.MUTED, Ui.MEDIUM);
         date.setPadding(dp(2), dp(8), 0, 0);
         line = new LinearLayout(this);
@@ -883,6 +906,26 @@ public final class Home extends Activity implements Shelf.Listener {
         allApps = new Row(Catalog.ALL_APPS, getString(R.string.row_all_apps), column);
         allApps.setVisible(false);
         inputs = new Row(Catalog.INPUTS, getString(R.string.row_inputs), column);
+
+        // Apple TV Aerial-style ambient screensaver overlay (bottom-left large light clock + date).
+        saverOverlay = new LinearLayout(this);
+        saverOverlay.setOrientation(LinearLayout.VERTICAL);
+        saverOverlay.setVisibility(View.GONE);
+        saverOverlay.setAlpha(0f);
+        saverClock = Ui.text(this, 64, 0xF5FFFFFF, Ui.LIGHT);
+        saverClock.setLetterSpacing(-0.02f);
+        saverClock.setShadowLayer(dp(14), 0, dp(3), 0xAA000000);
+        saverDate = Ui.text(this, 13, 0xCCFFFFFF, Ui.MEDIUM);
+        saverDate.setAllCaps(true);
+        saverDate.setLetterSpacing(0.18f);
+        saverDate.setPadding(dp(3), dp(6), 0, 0);
+        saverDate.setShadowLayer(dp(8), 0, dp(2), 0xAA000000);
+        saverOverlay.addView(saverClock, new LinearLayout.LayoutParams(WRAP, WRAP));
+        saverOverlay.addView(saverDate, new LinearLayout.LayoutParams(WRAP, WRAP));
+        FrameLayout.LayoutParams saverLp = new FrameLayout.LayoutParams(WRAP, WRAP, Gravity.BOTTOM | Gravity.START);
+        saverLp.leftMargin = dp(56);
+        saverLp.bottomMargin = dp(48);
+        root.addView(saverOverlay, saverLp);
         return root;
     }
 
@@ -1001,7 +1044,7 @@ public final class Home extends Activity implements Shelf.Listener {
         boolean tv = tvStyle();
         boolean icons = iconChips();
         if (icons) {
-            capsule.setBackground(Ui.roundStroke(0x6B090A10, 0x2BFFFFFF, dp(1), dp(999)));
+            capsule.setBackground(Ui.liquidGlass(0x36FFFFFF, 0x16FFFFFF, 0x50FFFFFF, dp(1), dp(999)));
             capsule.setPadding(dp(4), dp(4), dp(4), dp(4));
             capsuleSep.setVisibility(locked() ? View.GONE : View.VISIBLE);
         } else {
@@ -1613,6 +1656,8 @@ public final class Home extends Activity implements Shelf.Listener {
         greet.setText(hour < 5 ? "GOOD EVENING" : hour < 12 ? "GOOD MORNING" : hour < 17 ? "GOOD AFTERNOON" : "GOOD EVENING");
         Locale locale = Locale.getDefault();
         date.setText(DateFormat.format(DateFormat.getBestDateTimePattern(locale, "EEEEdMMMM"), now));
+        if (saverClock != null) saverClock.setText(clock.getText());
+        if (saverDate != null) saverDate.setText(date.getText());
         if (meter.getVisibility() == View.VISIBLE) {
             meter.update((android.app.ActivityManager) getSystemService(Context.ACTIVITY_SERVICE));
         }
@@ -1680,11 +1725,23 @@ public final class Home extends Activity implements Shelf.Listener {
             root.setBackgroundColor(cfg.background());
         }
         int dim = Integer.parseInt(cfg.get(Config.DIM));
-        shade.setBackgroundColor(file == null ? Color.TRANSPARENT : Color.argb(dim * 255 / 100, 0, 0, 0));
+        if (file == null) {
+            shade.setBackgroundColor(Color.TRANSPARENT);
+        } else {
+            int mid = Math.round(dim * 255f / 100f);
+            int top = Math.max(mid, 0x5C);
+            int bot = Math.max(mid, 0x8F);
+            GradientDrawable scrim = new GradientDrawable(
+                    GradientDrawable.Orientation.TOP_BOTTOM,
+                    new int[] {Color.argb(top, 7, 10, 18), Color.argb(mid, 7, 10, 18),
+                            Color.argb(mid, 7, 10, 18), Color.argb(bot, 7, 10, 18)});
+            shade.setBackground(scrim);
+        }
         String key = file == null ? null : file.getPath() + ":" + file.lastModified();
         if (key == null ? wallKey == null : key.equals(wallKey)) return;
         wallKey = key;
         if (file == null) {
+            wallPrev.setImageDrawable(null);
             wall.setImageDrawable(null);
             return;
         }
@@ -1692,9 +1749,86 @@ public final class Home extends Activity implements Shelf.Listener {
             Bitmap b = decode(file, getResources().getDisplayMetrics().widthPixels,
                     getResources().getDisplayMetrics().heightPixels);
             ui.post(() -> {
-                if (key.equals(wallKey)) wall.setImageBitmap(b);
+                if (!key.equals(wallKey) || b == null) return;
+                Drawable prev = wall.getDrawable();
+                if (prev != null) {
+                    wallPrev.setImageDrawable(prev);
+                    wallPrev.setScaleX(wall.getScaleX());
+                    wallPrev.setScaleY(wall.getScaleY());
+                    wall.setAlpha(0f);
+                    wall.setImageBitmap(b);
+                    wall.animate().alpha(1f).setDuration(saverActive ? 900 : 450).start();
+                } else {
+                    wall.setImageBitmap(b);
+                }
+                if (saverActive) startKenBurns();
             });
         });
+    }
+
+    private void pokeIdle() {
+        ui.removeCallbacks(enterSaver);
+        if (resumed && !saverActive && moving == null) {
+            ui.postDelayed(enterSaver, IDLE_SAVER_MS);
+        }
+    }
+
+    private void stopIdleSaver() {
+        ui.removeCallbacks(enterSaver);
+        ui.removeCallbacks(saverAdvance);
+        if (saverActive) exitSaver();
+    }
+
+    private void enterSaver() {
+        if (!resumed || saverActive || moving != null) return;
+        if (cfg.wallpaper() == null) return;
+        saverActive = true;
+        if (scroll != null) scroll.animate().alpha(0f).setDuration(700).start();
+        if (spot != null) spot.animate().alpha(0f).setDuration(700).start();
+        if (shade != null) shade.animate().alpha(0.32f).setDuration(700).start();
+        if (saverOverlay != null) {
+            saverOverlay.setVisibility(View.VISIBLE);
+            saverOverlay.animate().alpha(1f).setDuration(700).start();
+        }
+        startKenBurns();
+        ui.removeCallbacks(saverAdvance);
+        ui.postDelayed(saverAdvance, SAVER_SLIDE_MS);
+    }
+
+    private void exitSaver() {
+        saverActive = false;
+        ui.removeCallbacks(saverAdvance);
+        wall.animate().cancel();
+        wall.animate().scaleX(1f).scaleY(1f).setDuration(300).start();
+        if (scroll != null) scroll.animate().alpha(1f).setDuration(260).start();
+        if (spot != null) spot.animate().alpha(1f).setDuration(260).start();
+        if (shade != null) shade.animate().alpha(1f).setDuration(260).start();
+        if (saverOverlay != null) {
+            saverOverlay.animate().alpha(0f).setDuration(220)
+                    .withEndAction(() -> saverOverlay.setVisibility(View.GONE)).start();
+        }
+        pokeIdle();
+    }
+
+    private void advanceSaver() {
+        if (!saverActive || !resumed) return;
+        saverStep++;
+        if (saverOverlay != null) {
+            // Subtle pixel shift per slide to prevent burn-in on OLED/LCD panels.
+            float dx = ((saverStep % 3) - 1) * dp(10);
+            float dy = (((saverStep / 3) % 3) - 1) * dp(6);
+            saverOverlay.animate().translationX(dx).translationY(dy).setDuration(900).start();
+        }
+        cfg.nextWallpaper();
+        background();
+        ui.postDelayed(saverAdvance, SAVER_SLIDE_MS);
+    }
+
+    private void startKenBurns() {
+        wall.animate().cancel();
+        wall.setScaleX(1f);
+        wall.setScaleY(1f);
+        wall.animate().scaleX(1.06f).scaleY(1.06f).setDuration(SAVER_SLIDE_MS).start();
     }
 
     private static Bitmap decode(File f, int w, int h) {

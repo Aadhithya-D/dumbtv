@@ -53,6 +53,15 @@ final class Ui {
         return d;
     }
 
+    /** tvOS-style vertical liquid glass gradient with a crisp specular hairline rim. */
+    static GradientDrawable liquidGlass(int topFill, int bottomFill, int stroke, int strokePx, float radius) {
+        GradientDrawable d = new GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM, new int[] {topFill, bottomFill});
+        d.setCornerRadius(radius);
+        d.setStroke(strokePx, stroke);
+        return d;
+    }
+
     /** Accent fill when focused, a faint fill otherwise. */
     static void focusStyle(TextView v, int accent, int idle, float radius) {
         StateListDrawable bg = new StateListDrawable();

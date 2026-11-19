@@ -29,11 +29,10 @@ final class Grid extends ViewGroup {
         setClipToPadding(false);
         hGap = Ui.dp(c, 18);
         vGap = Ui.dp(c, 18);
-        trayPaint.setColor(0x6607080D);
-        trayGlass.setColor(0x06FFFFFF);
+        trayPaint.setColor(0x36070A12);
         trayEdge.setStyle(android.graphics.Paint.Style.STROKE);
         trayEdge.setStrokeWidth(Ui.dp(c, 1));
-        trayEdge.setColor(0x20FFFFFF);
+        trayEdge.setColor(0x44FFFFFF);
         traySheen.setStyle(android.graphics.Paint.Style.STROKE);
         traySheen.setStrokeWidth(Ui.dp(c, 1));
     }
@@ -49,10 +48,12 @@ final class Grid extends ViewGroup {
             // A tile keeps room under its card for a name; the tray hugs the 16:9 card itself.
             float rt = last.getRight() + pad, b = first.getTop() + first.getWidth() * 9f / 16f + pad;
             canvas.drawRoundRect(l, t, rt, b, r, r, trayPaint);
+            trayGlass.setShader(new android.graphics.LinearGradient(l, t, l, b,
+                    new int[] {0x2EFFFFFF, 0x10FFFFFF}, null, android.graphics.Shader.TileMode.CLAMP));
             canvas.drawRoundRect(l, t, rt, b, r, r, trayGlass);
             canvas.drawRoundRect(l, t, rt, b, r, r, trayEdge);
             traySheen.setShader(new android.graphics.LinearGradient(l + r, t, rt - r, t,
-                    new int[] {0x00FFFFFF, 0x33FFFFFF, 0x00FFFFFF},
+                    new int[] {0x00FFFFFF, 0x6BFFFFFF, 0x00FFFFFF},
                     new float[] {0f, 0.5f, 1f}, android.graphics.Shader.TileMode.CLAMP));
             canvas.drawLine(l + r, t + Ui.dp(getContext(), 0.5f), rt - r, t + Ui.dp(getContext(), 0.5f), traySheen);
         }
