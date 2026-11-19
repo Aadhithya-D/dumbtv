@@ -18,6 +18,8 @@ final class Grid extends ViewGroup {
     /** Apple TV style: a fixed column count, and a tray drawn behind the first line. 0 = fit. */
     int fixedColumns;
     boolean tray;
+    /** The line the tray sits behind: Apple TV style moves later lines into the dock's place. */
+    int trayLine;
     private final android.graphics.Paint trayPaint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
     private final android.graphics.Paint trayGlass = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
     private final android.graphics.Paint trayEdge = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
@@ -37,7 +39,7 @@ final class Grid extends ViewGroup {
         int n = getChildCount();
         if (!tray || n == 0 || getWidth() == 0) return null;
         int cols = Math.min(n, columns());
-        View first = getChildAt(0), last = getChildAt(cols - 1);
+        View first = getChildAt(lineStart(cols)), last = getChildAt(cols - 1);
         if (first.getWidth() == 0) return null;
         int padX = Ui.dp(getContext(), 18), padY = Ui.dp(getContext(), 16);
         int[] at = new int[2];
@@ -68,7 +70,7 @@ final class Grid extends ViewGroup {
         int n = getChildCount();
         if (tray && n > 0) {
             int cols = Math.min(n, columns());
-            View first = getChildAt(0), last = getChildAt(cols - 1);
+            View first = getChildAt(lineStart(cols)), last = getChildAt(cols - 1);
             float padX = Ui.dp(getContext(), 18), padY = Ui.dp(getContext(), 16), r = Ui.dp(getContext(), 28);
             float l = first.getLeft() - padX, t = first.getTop() - padY;
             // A tile keeps room under its card for a name; the tray hugs the 16:9 card itself.
@@ -89,6 +91,13 @@ final class Grid extends ViewGroup {
             }
         }
         super.dispatchDraw(canvas);
+    }
+
+    /** The first tile of the tray's line; the tray keeps the first line's width. */
+    private int lineStart(int cols) {
+        int n = getChildCount();
+        int start = Math.max(0, trayLine) * Math.max(1, cols);
+        return start < n ? start : ((n - 1) / Math.max(1, cols)) * Math.max(1, cols);
     }
 
     private int columns(int availableWidth, int childWidth) {

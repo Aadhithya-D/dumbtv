@@ -108,6 +108,9 @@ public final class Home extends Activity implements Shelf.Listener {
     private LinearLayout shelf, shelfStrip;
     private TextView shelfLabel, spotDesc;
     private FrameLayout.LayoutParams shelfLp;
+    private android.widget.HorizontalScrollView shelfScroll;
+    /** Apple TV style: the line of apps in the dock's place; the lines above it slid off. */
+    private int dockLine;
     private Tile shelfOwner;
     private String shelfKey = "";
     private LinearLayout line;
@@ -494,6 +497,15 @@ public final class Home extends Activity implements Shelf.Listener {
             int gridTop = topIn(apps.grid, content);
             int range = Math.max(0, content.getHeight() - page.getHeight());
             if (r.centerY() < gridTop + first.getBottom()) return 0;
+            View last = apps.grid.getChildAt(apps.grid.getChildCount() - 1);
+            int cols = Math.max(1, apps.grid.fixedColumns);
+            if (r.centerY() < gridTop + last.getBottom() && apps.grid.getChildCount() > cols) {
+                // A later line of apps takes the first line's place, one whole line at a time;
+                // the column keeps a screen of room below for the last line to get there.
+                int lineH = apps.grid.getChildAt(cols).getTop() - first.getTop();
+                int line = Math.max(0, (r.centerY() - gridTop - first.getTop()) / Math.max(1, lineH));
+                return Math.min(range, line * lineH);
+            }
             int top = gridTop + first.getTop() - dp(48);
             int need = r.bottom + dp(48) - page.getHeight();
             return Math.max(0, Math.min(range, Math.max(top, need)));
@@ -621,9 +633,13 @@ public final class Home extends Activity implements Shelf.Listener {
         shelf.setClipChildren(false);
         shelf.setClipToPadding(false);
         shelf.setVisibility(View.GONE);
-        shelfLabel = Ui.text(this, 12, Ui.MUTED, Ui.MEDIUM);
-        shelfLabel.setLetterSpacing(0.14f);
-        shelfLabel.setPadding(SHELF_PAD() + dp(2), 0, 0, dp(10) - SHELF_PAD());
+        shelfLabel = Ui.text(this, 15, 0xE6FFFFFF, Ui.MEDIUM);
+        shelfLabel.setPadding(dp(56) + dp(2), 0, 0, dp(4));
+        shelfLabel.setShadowLayer(dp(6), 0, dp(1), 0xB3000000);
+        // The shelf runs from the top of the screen and darkens the wallpaper under it, so its
+        // label and names stay readable on a busy picture; it fades with the shelf.
+        shelf.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[] {0xB3000000, 0x8C000000, 0x59000000, 0x00000000}));
         shelf.addView(shelfLabel);
         shelfStrip = new LinearLayout(this) {
             /** Down returns to the app, Up goes to the buttons, and the ends hold the focus. */
@@ -635,6 +651,12 @@ public final class Home extends Activity implements Shelf.Listener {
                     return apps.tiles().getChildCount() > 0 ? apps.tiles().getChildAt(0) : focused;
                 }
                 if (direction == View.FOCUS_UP) {
+                    // Below the first line, the line above comes before the buttons.
+                    if (shelfOwner != null && shelfOwner.getParent() == apps.grid && lineOf(shelfOwner) > 0) {
+                        int cols = Math.max(1, apps.grid.fixedColumns);
+                        int above = apps.grid.indexOfChild(shelfOwner) - cols;
+                        if (above >= 0) return apps.grid.getChildAt(above);
+                    }
                     for (TextView c : chips) if (c.getVisibility() == View.VISIBLE) return c;
                     return focused;
                 }
@@ -647,8 +669,17 @@ public final class Home extends Activity implements Shelf.Listener {
         shelfStrip.setClipToPadding(false);
         // Room for a focused card's 8% growth and ring: the screen clips the shelf at its own
         // edges, so the cards sit SHELF_PAD in from them.
-        shelfStrip.setPadding(SHELF_PAD(), SHELF_PAD(), SHELF_PAD(), SHELF_PAD());
-        shelf.addView(shelfStrip);
+        shelfStrip.setPadding(dp(56), SHELF_PAD(), dp(56), SHELF_PAD());
+        // Cards are wider than a third of the screen: the row scrolls, and the next card
+        // shows past the right edge as on Apple TV.
+        shelfScroll = new android.widget.HorizontalScrollView(this);
+        shelfScroll.setHorizontalScrollBarEnabled(false);
+        shelfScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        shelfScroll.setClipChildren(false);
+        shelfScroll.setClipToPadding(false);
+        shelfScroll.setFocusable(false);
+        shelfScroll.addView(shelfStrip, new FrameLayout.LayoutParams(WRAP, WRAP));
+        shelf.addView(shelfScroll, new LinearLayout.LayoutParams(MATCH, WRAP));
         dim = new View(this);
         dim.setBackgroundColor(0x99000000);
         dim.setAlpha(0f);
@@ -659,8 +690,8 @@ public final class Home extends Activity implements Shelf.Listener {
         spotLp.topMargin = Math.round(screenH * 0.25f);
         root.addView(spot, spotLp);
         shelfLp = new FrameLayout.LayoutParams(MATCH, WRAP);
-        shelfLp.leftMargin = dp(56) - SHELF_PAD();
-        shelfLp.rightMargin = dp(56) - SHELF_PAD();
+        shelfLp.leftMargin = 0;
+        shelfLp.rightMargin = 0;
         root.addView(shelf, shelfLp);
 
         ScrollView scroll = new ScrollView(this) {
@@ -707,10 +738,11 @@ public final class Home extends Activity implements Shelf.Listener {
             @Override
             public View focusSearch(View focused, int direction) {
                 if (direction == View.FOCUS_UP && focused instanceof Tile && focused.getParent() == apps.grid
-                        && tvStyle() && lineOf((Tile) focused) == 0 && shelf.getVisibility() == View.VISIBLE
+                        && tvStyle() && shelf.getVisibility() == View.VISIBLE
                         && shelfStrip.getChildCount() > 0) {
-                    View card = nearest(shelfStrip, focused);
-                    return card != null ? card : shelfStrip.getChildAt(0);
+                    // Apple TV: Up from the dock lands on the first card of the shelf.
+                    shelfScroll.scrollTo(0, 0);
+                    return shelfStrip.getChildAt(0);
                 }
                 // The library banner sits between the chips and the rows; Down from it
                 // goes where Down from the chips goes without it.
@@ -1046,6 +1078,11 @@ public final class Home extends Activity implements Shelf.Listener {
         // The shelf's log reader and pin page only run while Top Shelf is on (in Apple TV style).
         if (tv && !"off".equals(cfg.get(Config.SHELF))) Shelf.start(this);
         apps.grid.fixedColumns = tv ? Integer.parseInt(cfg.get(Config.COLUMNS)) : 0;
+        // Apple TV style moves each line of apps up into the dock's place: the last line needs a
+        // screen of room under it to get there.
+        column.setPadding(column.getPaddingLeft(), column.getPaddingTop(), column.getPaddingRight(),
+                tv ? getResources().getDisplayMetrics().heightPixels : dp(32));
+        if (!tv) setDockLine(0);
         apps.grid.tray = tv;
         if (!tv) {
             expanded = false;
@@ -1170,8 +1207,12 @@ public final class Home extends Activity implements Shelf.Listener {
                     focusBackground(tile.item);
                     spotlight(tile);
                     if (tvStyle() && tile.getParent() == apps.grid) {
-                        setExpanded(lineOf(tile) > 0, true);
-                        if (lineOf(tile) == 0) showShelf(tile);
+                        setDockLine(lineOf(tile));
+                        setExpanded(false, true);
+                        showShelf(tile);
+                    } else if (tvStyle()) {
+                        // Inputs and All apps below the grid: the whole page, dimmed, as before.
+                        setExpanded(true, true);
                     }
                 }
             });
@@ -1314,13 +1355,18 @@ public final class Home extends Activity implements Shelf.Listener {
             return;
         }
         boolean anyWatching = false, anyPinned = false;
-        int[] size = cardSize();
+        int[] size = shelfCardSize();
         int w = size[0], h = size[1];
+        android.graphics.drawable.Drawable badge = owner.item.banner != null ? owner.item.banner : owner.item.icon;
+        int color = owner.item.backgroundColor != 0 ? owner.item.backgroundColor : 0xFF2A2D35;
+        int[] brand = BrandColors.forPackage(owner.item.id);
+        if (owner.item.backgroundColor == 0 && brand != null) color = brand[0];
         for (Shelf.Entry e : list) {
             boolean pin = Shelf.pinned(e);
             if (pin) anyPinned = true;
             else anyWatching = true;
-            ShelfCard card = new ShelfCard(this, e, w, h);
+            ShelfCard card = new ShelfCard(this, e, w, h, badge == null ? null : badge.getConstantState() != null
+                    ? badge.getConstantState().newDrawable().mutate() : badge, color);
             card.pinned = pin;
             card.setOnClickListener(v -> openEntry(((ShelfCard) v).entry));
             card.setOnLongClickListener(v -> {
@@ -1331,6 +1377,8 @@ public final class Home extends Activity implements Shelf.Listener {
                 if (!has) return;
                 Shelf.Entry x = ((ShelfCard) v).entry;
                 setExpanded(false, true);
+                // The focused card keeps its place at the left edge, as on Apple TV.
+                shelfScroll.smoothScrollTo(Math.max(0, v.getLeft() - shelfStrip.getPaddingLeft()), 0);
                 spotTitle.setText(x.title);
                 String sub = x.subtitle == null || x.subtitle.isEmpty() ? x.description
                         : x.description.isEmpty() ? x.subtitle : x.subtitle + "  \u00b7  " + x.description;
@@ -1343,8 +1391,8 @@ public final class Home extends Activity implements Shelf.Listener {
                 if (ev.getAction() == KeyEvent.ACTION_UP) shelfMenu((ShelfCard) v);
                 return true;
             });
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(w, h);
-            lp.rightMargin = dp(18);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(w, h + card.nameH);
+            lp.rightMargin = dp(24);
             shelfStrip.addView(card, lp);
             // Pinning reorders the shelf; stay on the title that was pinned.
             if (e.title.equals(keepTitle)) card.post(card::requestFocus);
@@ -1354,13 +1402,13 @@ public final class Home extends Activity implements Shelf.Listener {
                 if (b != null) ui.post(() -> card.setBitmap(b));
             });
         }
-        String app = Catalog.label(cfg, owner.item).toString().toUpperCase(Locale.ROOT);
-        shelfLabel.setText((anyWatching ? "CONTINUE WATCHING" : "PINNED") + "  \u00b7  " + app);
-        int spotTop = tvRowTop() - dp(84);
-        int top = spotTop - dp(12) - SHELF_PAD() - h - dp(10) - shelfLabel.getLineHeight() - dp(4);
-        if (shelfLp.topMargin != top) {
-            shelfLp.topMargin = top;
+        shelfLabel.setText(anyWatching ? "Continue Watching" : "Pinned");
+        shelfScroll.scrollTo(0, 0);
+        int top = shelfBottom() - (shelfLabel.getLineHeight() + dp(4) + 2 * SHELF_PAD() + h + dp(30));
+        if (shelfLp.topMargin != 0 || shelf.getPaddingTop() != top) {
+            shelfLp.topMargin = 0;
             shelf.setLayoutParams(shelfLp);
+            shelf.setPadding(shelfLp.leftMargin > 0 ? 0 : 0, Math.max(0, top), 0, dp(24));
         }
         shelf.setVisibility(View.VISIBLE);
         shelf.setAlpha(0f);
@@ -1413,10 +1461,14 @@ public final class Home extends Activity implements Shelf.Listener {
         dim.animate().alpha(on ? 1f : 0f).setDuration(d).start();
         spot.animate().alpha(on ? 0f : 1f).setDuration(d).start();
         shelf.animate().alpha(on ? 0f : 1f).setDuration(d).start();
-        float rest = on || "on".equals(cfg.get(Config.PEEK)) ? 1f : 0f;
+        boolean peek = "on".equals(cfg.get(Config.PEEK));
         int cols = Math.max(1, apps.grid.fixedColumns);
-        for (int i = cols; i < apps.grid.getChildCount(); i++) {
+        for (int i = 0; i < apps.grid.getChildCount(); i++) {
             View t = apps.grid.getChildAt(i);
+            int line = i / cols;
+            // Expanded (Inputs below): every line. Otherwise the dock's line, and the next one
+            // when Peek is on; the lines above have slid off the top.
+            float rest = on ? 1f : line == dockLine ? 1f : line == dockLine + 1 && peek ? 1f : 0f;
             // Not t.animate(): the tile's own focus scale shares that animator and cancels it.
             if (animate && t.getAlpha() != rest) {
                 android.animation.ObjectAnimator.ofFloat(t, View.ALPHA, rest).setDuration(d).start();
@@ -1424,6 +1476,27 @@ public final class Home extends Activity implements Shelf.Listener {
                 t.setAlpha(rest);
             }
         }
+    }
+
+    /** Apple TV style: which line of apps sits in the dock's place, its tray behind it. */
+    private void setDockLine(int line) {
+        if (line == dockLine) return;
+        dockLine = line;
+        apps.grid.trayLine = line;
+        apps.grid.invalidate();
+    }
+
+    /** The shelf's lowest point: just above the dock's tray. */
+    private int shelfBottom() {
+        return tvRowTop() - dp(30);
+    }
+
+    /** Apple TV's Continue Watching cards: about 42% of the width, as tall as the room allows. */
+    private int[] shelfCardSize() {
+        int screenW = getResources().getDisplayMetrics().widthPixels;
+        int room = shelfBottom() - dp(52) - shelfLabel.getLineHeight() - dp(4) - 2 * SHELF_PAD() - dp(30);
+        int w = Math.min(Math.round(screenW * 0.42f), Math.max(dp(160), room) * 16 / 9);
+        return new int[] {w, w * 9 / 16};
     }
 
     private void adjustAppRowPosition() {
