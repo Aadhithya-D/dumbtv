@@ -96,10 +96,10 @@ public final class Home extends Activity implements Shelf.Listener {
     private TextView saverClock, saverDate;
     private boolean saverActive;
     private int saverStep;
-    private static final long IDLE_SAVER_MS = 60_000L;
     private static final long SAVER_SLIDE_MS = 20_000L;
     private final Runnable enterSaver = this::enterSaver;
     private final Runnable saverAdvance = this::advanceSaver;
+    private final Runnable wallRotate = this::rotateWallpaperTick;
     /** Spotlight: the focused app's colour as a glow in the top right, fading to near black. */
     private GradientDrawable glow;
     private LinearLayout spot;
@@ -378,6 +378,7 @@ public final class Home extends Activity implements Shelf.Listener {
         tick();
         startNetworkWatch();
         pokeIdle();
+        scheduleWallRotate();
     }
 
     @Override
@@ -396,6 +397,7 @@ public final class Home extends Activity implements Shelf.Listener {
         unregisterReceiver(time);
         stopNetworkWatch();
         stopIdleSaver();
+        ui.removeCallbacks(wallRotate);
         if (moving != null) stopMoving();
     }
 
@@ -1124,6 +1126,8 @@ public final class Home extends Activity implements Shelf.Listener {
         render(inputs);
         background();
         tick();
+        scheduleWallRotate();
+        pokeIdle();
     }
 
     /** Rebuilds the app list, keeping loaded art for every package except {@code changed}. */
@@ -1831,10 +1835,39 @@ public final class Home extends Activity implements Shelf.Listener {
         });
     }
 
+    private long saverIdleMs() {
+        String s = cfg.get(Config.SAVER);
+        if ("off".equals(s)) return 0L;
+        try {
+            return Long.parseLong(s) * 1000L;
+        } catch (NumberFormatException ignored) {
+            return 60_000L;
+        }
+    }
+
+    private long saverSlideMs() {
+        long ms = Config.rotateMs(cfg.get(Config.ROTATE));
+        return ms > 0 ? Math.min(ms, 60_000L) : SAVER_SLIDE_MS;
+    }
+
+    private void scheduleWallRotate() {
+        ui.removeCallbacks(wallRotate);
+        if (!resumed || saverActive) return;
+        long ms = Config.rotateMs(cfg.get(Config.ROTATE));
+        if (ms > 0) ui.postDelayed(wallRotate, ms);
+    }
+
+    private void rotateWallpaperTick() {
+        if (!resumed || saverActive) return;
+        background();
+        scheduleWallRotate();
+    }
+
     private void pokeIdle() {
         ui.removeCallbacks(enterSaver);
-        if (resumed && !saverActive && moving == null) {
-            ui.postDelayed(enterSaver, IDLE_SAVER_MS);
+        long delay = saverIdleMs();
+        if (resumed && !saverActive && moving == null && delay > 0) {
+            ui.postDelayed(enterSaver, delay);
         }
     }
 
@@ -1848,6 +1881,7 @@ public final class Home extends Activity implements Shelf.Listener {
         if (!resumed || saverActive || moving != null) return;
         if (cfg.wallpaper() == null) return;
         saverActive = true;
+        ui.removeCallbacks(wallRotate);
         if (scroll != null) scroll.animate().alpha(0f).setDuration(700).start();
         if (spot != null) spot.animate().alpha(0f).setDuration(700).start();
         if (shade != null) shade.animate().alpha(0.32f).setDuration(700).start();
@@ -1857,7 +1891,7 @@ public final class Home extends Activity implements Shelf.Listener {
         }
         startKenBurns();
         ui.removeCallbacks(saverAdvance);
-        ui.postDelayed(saverAdvance, SAVER_SLIDE_MS);
+        ui.postDelayed(saverAdvance, saverSlideMs());
     }
 
     private void exitSaver() {
@@ -1873,6 +1907,7 @@ public final class Home extends Activity implements Shelf.Listener {
                     .withEndAction(() -> saverOverlay.setVisibility(View.GONE)).start();
         }
         pokeIdle();
+        scheduleWallRotate();
     }
 
     private void advanceSaver() {
@@ -1886,14 +1921,14 @@ public final class Home extends Activity implements Shelf.Listener {
         }
         cfg.nextWallpaper();
         background();
-        ui.postDelayed(saverAdvance, SAVER_SLIDE_MS);
+        ui.postDelayed(saverAdvance, saverSlideMs());
     }
 
     private void startKenBurns() {
         wall.animate().cancel();
         wall.setScaleX(1f);
         wall.setScaleY(1f);
-        wall.animate().scaleX(1.06f).scaleY(1.06f).setDuration(SAVER_SLIDE_MS).start();
+        wall.animate().scaleX(1.06f).scaleY(1.06f).setDuration(saverSlideMs()).start();
     }
 
     private static Bitmap decode(File f, int w, int h) {
