@@ -1340,7 +1340,8 @@ public final class Home extends Activity implements Shelf.Listener {
         }
         shelfOwner = owner;
         int cols = Math.max(1, apps.grid.fixedColumns);
-        List<Shelf.Entry> list = Shelf.forApp(owner.item.id, cols);
+        // The shelf scrolls, so it takes more than a screen's width of titles.
+        List<Shelf.Entry> list = Shelf.forApp(owner.item.id, 10);
         StringBuilder key = new StringBuilder(owner.item.id);
         for (Shelf.Entry e : list) key.append('|').append(e.title).append(Shelf.pinned(e) ? "*" : "");
         if (key.toString().equals(shelfKey)) return;

@@ -190,7 +190,7 @@ public final class Recorder extends NotificationListenerService {
             e.watched = System.currentTimeMillis();
             // No link: MEDIA_URI is the stream itself (Hotstar's is a CDN address), not a page the
             // app can open, so OK on the card opens the app instead.
-            e.link = null;
+            e.link = link(pkg, id, e.image);
             e.image = web(text(meta, MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI,
                     MediaMetadata.METADATA_KEY_ART_URI, MediaMetadata.METADATA_KEY_ALBUM_ART_URI));
             return e;
@@ -206,6 +206,24 @@ public final class Recorder extends NotificationListenerService {
             }
             return Math.max(0, pos);
         }
+    }
+
+    /**
+     * A link that opens the title itself, for apps whose ids say enough. Zee5: the episode id
+     * (0-1-…) and the show id inside its banner's address (resources/0-6-…) make the web link
+     * its app opens straight into the player; a film (0-0-…) needs only its own id. Others:
+     * null, and the card opens the app.
+     */
+    static String link(String pkg, String id, String image) {
+        if (id == null) return null;
+        if ("com.zee5.amazon".equals(pkg)) {
+            if (id.startsWith("0-0-")) return "https://www.zee5.com/movies/details/title/" + id;
+            if (id.startsWith("0-1-") && image != null) {
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("resources/(0-6-[0-9a-z]+)/").matcher(image);
+                if (m.find()) return "https://www.zee5.com/tv-shows/details/show/" + m.group(1) + "/episode/" + id;
+            }
+        }
+        return null;
     }
 
     private static boolean sameTitle(MediaMetadata a, MediaMetadata b) {
