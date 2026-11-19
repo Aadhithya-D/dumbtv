@@ -365,6 +365,12 @@ final class Config {
         return ACCENTS[Arrays.asList(ACCENT.values).indexOf(get(ACCENT))];
     }
 
+    /** The colour of one Accent value, for Options' swatches. */
+    static int accentColor(String value) {
+        int i = Arrays.asList(ACCENT.values).indexOf(value);
+        return ACCENTS[i < 0 ? 0 : i];
+    }
+
     int background() {
         return BACKGROUNDS[Arrays.asList(BACKGROUND.values).indexOf(get(BACKGROUND))];
     }
