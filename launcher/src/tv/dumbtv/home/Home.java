@@ -1374,7 +1374,7 @@ public final class Home extends Activity implements Shelf.Listener {
             }).start();
             return;
         }
-        boolean anyWatching = false, anyPinned = false;
+        boolean anyWatching = false, anyPinned = false, anyToday = false;
         int[] size = shelfCardSize();
         int w = size[0], h = size[1];
         android.graphics.drawable.Drawable badge = owner.item.banner != null ? owner.item.banner : owner.item.icon;
@@ -1385,6 +1385,7 @@ public final class Home extends Activity implements Shelf.Listener {
             boolean pin = Shelf.pinned(e);
             if (pin) anyPinned = true;
             else anyWatching = true;
+            if (pin && e.scheduled()) anyToday = true;
             ShelfCard card = new ShelfCard(this, e, w, h, badge == null ? null : badge.getConstantState() != null
                     ? badge.getConstantState().newDrawable().mutate() : badge, color);
             card.pinned = pin;
@@ -1422,7 +1423,8 @@ public final class Home extends Activity implements Shelf.Listener {
                 if (b != null) ui.post(() -> card.setBitmap(b));
             });
         }
-        shelfLabel.setText(anyWatching ? "Continue Watching" : "Pinned");
+        // A video set for this hour leads the shelf, and names it.
+        shelfLabel.setText(anyToday ? "Today" : anyWatching ? "Continue Watching" : "Pinned");
         shelfScroll.scrollTo(0, 0);
         int top = shelfBottom() - (shelfLabel.getLineHeight() + dp(4) + 2 * SHELF_PAD() + h + dp(30));
         if (shelfLp.topMargin != 0 || shelf.getPaddingTop() != top) {
@@ -1729,6 +1731,8 @@ public final class Home extends Activity implements Shelf.Listener {
         }
         // hourly and time-of-day rotations change while the screen stays open; a no-op otherwise
         background();
+        // A pin for set hours (the morning video) comes and goes on its own; unchanged, a no-op.
+        if (shelfOwner != null && tvStyle() && !expanded && shelf != null) showShelf(shelfOwner);
     }
 
     private void background() {

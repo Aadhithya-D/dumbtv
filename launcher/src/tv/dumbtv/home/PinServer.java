@@ -29,6 +29,8 @@ import java.util.regex.Pattern;
  */
 final class PinServer {
     static final int PORT = 8080;
+    /** YouTube links open in SmartTube, which takes youtube.com links straight to the player. */
+    static final String YOUTUBE = "org.smarttube.stable";
     private static final String UA =
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36";
     private static boolean started;
@@ -87,7 +89,7 @@ final class PinServer {
             }
             Map<String, String> form = form(new String(body, 0, got));
             String note = "";
-            if (request.startsWith("POST /pin")) note = pin(form.get("link"), form.get("name"));
+            if (request.startsWith("POST /pin")) note = pin(form.get("link"), form.get("name"), form);
             else if (request.startsWith("POST /unpin")) note = unpin(form.get("pkg"), form.get("title"));
             if (request.startsWith("POST")) {
                 // Back to the page, so a refresh does not send the form again.
@@ -135,10 +137,11 @@ final class PinServer {
         if (host.endsWith("sunnxt.com")) return "com.suntv.sunnxt";
         if (host.endsWith("primevideo.com") || host.contains("amazon.")) return "com.amazon.firebat";
         if (host.endsWith("stremio.com") || host.endsWith("strem.io")) return "com.stremio.one";
+        if (host.endsWith("youtube.com") || host.equals("youtu.be")) return YOUTUBE;
         return null;
     }
 
-    private static String pin(String link, String name) {
+    private static String pin(String link, String name, Map<String, String> form) {
         if (link == null || link.isEmpty()) return "Paste a link first.";
         Matcher url = Pattern.compile("https?://\\S+").matcher(link);
         if (!url.find()) return "That doesn't look like a link.";
@@ -151,12 +154,20 @@ final class PinServer {
         e.pkg = pkg;
         e.id = link;
         e.link = tvLink(pkg, u);
-        String[] meta = meta(link);
+        String[] meta = YOUTUBE.equals(pkg) ? youtube(u) : meta(link);
+        if (YOUTUBE.equals(pkg) && meta == null) return "That doesn't look like a YouTube video link.";
         e.title = name != null && !name.isEmpty() ? name : meta[0] != null ? clean(meta[0]) : fromPath(u);
         e.image = meta[1];
         e.description = meta[2] == null ? "" : meta[2];
+        // Only on the ticked days, between the two times (both empty: always).
+        StringBuilder days = new StringBuilder();
+        for (int d = 1; d <= 7; d++) if (form.containsKey("d" + d)) days.append(d);
+        e.days = days.length() == 7 ? "" : days.toString();
+        e.from = minutes(form.get("from"));
+        e.to = minutes(form.get("to"));
+        if (e.from < 0 || e.to < 0 || e.from == e.to) e.from = e.to = -1;
         Shelf.pin(e, true);
-        return "Pinned " + e.title + ".";
+        return "Pinned " + e.title + (e.scheduled() ? " for " + when(e) : "") + ".";
     }
 
     private static String unpin(String pkg, String title) {
@@ -168,12 +179,92 @@ final class PinServer {
         return "Unpinned " + title + ".";
     }
 
+    /** "07:30" -> 450; -1 when empty or not a time. */
+    private static int minutes(String hhmm) {
+        if (hhmm == null) return -1;
+        Matcher m = Pattern.compile("^(\\d{1,2}):(\\d{2})$").matcher(hhmm.trim());
+        if (!m.find()) return -1;
+        int h = Integer.parseInt(m.group(1)), min = Integer.parseInt(m.group(2));
+        return h < 24 && min < 60 ? h * 60 + min : -1;
+    }
+
+    private static final String[] DAY = {"", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+
+    /** "Mon, Wed 06:00–11:00", "every day 06:00–11:00", "Sun". */
+    static String when(Shelf.Entry e) {
+        StringBuilder b = new StringBuilder();
+        if (e.days.isEmpty()) b.append("every day");
+        else if (e.days.equals("23456")) b.append("weekdays");
+        else if (e.days.equals("17")) b.append("weekends");
+        else for (char c : e.days.toCharArray()) b.append(b.length() > 0 ? ", " : "").append(DAY[c - '0']);
+        if (e.from >= 0) b.append(String.format(Locale.ROOT, " %02d:%02d–%02d:%02d", e.from / 60, e.from % 60, e.to / 60, e.to % 60));
+        return b.toString();
+    }
+
+    /** The video id of a YouTube link (watch?v=, youtu.be/, /shorts/, /live/), or null. */
+    static String videoId(Uri u) {
+        String v = u.getQueryParameter("v");
+        if (v == null && u.getHost() != null && u.getHost().equals("youtu.be") && !u.getPathSegments().isEmpty()) {
+            v = u.getPathSegments().get(0);
+        }
+        List<String> seg = u.getPathSegments();
+        if (v == null && seg.size() >= 2 && (seg.get(0).equals("shorts") || seg.get(0).equals("live"))) v = seg.get(1);
+        return v != null && v.matches("[A-Za-z0-9_-]{11}") ? v : null;
+    }
+
+    /** Title (YouTube's oEmbed, no key), its 16:9 thumbnail, and the channel; null if no video id. */
+    private static String[] youtube(Uri u) {
+        String id = videoId(u);
+        if (id == null) return null;
+        String[] out = new String[3];
+        HttpURLConnection http = null;
+        try {
+            http = (HttpURLConnection) new URL("https://www.youtube.com/oembed?format=json&url="
+                    + Uri.encode("https://www.youtube.com/watch?v=" + id)).openConnection();
+            http.setConnectTimeout(5000);
+            http.setReadTimeout(6000);
+            StringBuilder json = new StringBuilder();
+            try (BufferedReader r = new BufferedReader(new InputStreamReader(http.getInputStream(), StandardCharsets.UTF_8))) {
+                for (String line; (line = r.readLine()) != null; ) json.append(line);
+            }
+            org.json.JSONObject o = new org.json.JSONObject(json.toString());
+            out[0] = o.optString("title", null);
+            out[2] = o.optString("author_name", "");
+        } catch (Exception ignored) {
+            // offline or private: the name comes from the box on the page
+        } finally {
+            if (http != null) http.disconnect();
+        }
+        // maxresdefault is 16:9 but missing for some videos; hqdefault always exists.
+        out[1] = exists("https://i.ytimg.com/vi/" + id + "/maxresdefault.jpg")
+                ? "https://i.ytimg.com/vi/" + id + "/maxresdefault.jpg" : "https://i.ytimg.com/vi/" + id + "/hqdefault.jpg";
+        return out;
+    }
+
+    private static boolean exists(String url) {
+        HttpURLConnection http = null;
+        try {
+            http = (HttpURLConnection) new URL(url).openConnection();
+            http.setRequestMethod("HEAD");
+            http.setConnectTimeout(5000);
+            return http.getResponseCode() == 200;
+        } catch (Exception e) {
+            return false;
+        } finally {
+            if (http != null) http.disconnect();
+        }
+    }
+
     /** The link the TV app understands for a web link. */
     private static String tvLink(String pkg, Uri u) {
         String path = u.getPath() == null ? "" : u.getPath();
         if ("com.netflix.ninja".equals(pkg)) {
             Matcher m = Pattern.compile("/title/(\\d+)").matcher(path);
             if (m.find()) return "https://www.netflix.com/title/" + m.group(1);
+        }
+        if (YOUTUBE.equals(pkg)) {
+            String id = videoId(u);
+            if (id != null) return "https://www.youtube.com/watch?v=" + id;
         }
         if ("com.stremio.one".equals(pkg)) {
             // web.stremio.com/#/detail/series/tt… -> stremio:///detail/series/tt…
@@ -265,19 +356,28 @@ final class PinServer {
                 .append(".pin{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid #222}")
                 .append(".pin img,.pin .ph{width:96px;height:54px;border-radius:6px;object-fit:cover;background:#1c1d21;flex:none}")
                 .append(".pin .t{flex:1;min-width:0}.pin .t b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}")
+                .append(".days{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 10px}.days label{background:#1c1d21;border:1px solid #333;border-radius:8px;padding:8px 10px;font-size:14px}")
+                .append(".days input{width:auto;margin:0 6px 0 0}.times{display:flex;gap:10px}.times label{flex:1;font-size:13px;color:#9a9a9f}")
                 .append(".pin .t span{color:#9a9a9f;font-size:13px}.pin form button{background:#2a2b30;color:#fff;width:auto;padding:8px 12px;font-size:14px}")
                 .append("</style></head><body><h1>Pin a show</h1>")
-                .append("<p class=s>Paste a link from the Netflix, JioHotstar, ZEE5, Sun NXT, Prime Video or Stremio website, or from Share in their phone apps. It appears on that app's Top Shelf on the TV.</p>");
+                .append("<p class=s>Paste a link from YouTube, Netflix, ZEE5, Sun NXT, Prime Video or Stremio, or use Share in their phone apps. It appears on that app's Top Shelf on the TV (YouTube on SmartTube's).</p>");
         if (note != null && !note.isEmpty()) b.append("<div class=note>").append(esc(note)).append("</div>");
         b.append("<form method=post action=/pin><textarea name=link rows=3 placeholder='https://www.hotstar.com/in/shows/…' required></textarea>")
-                .append("<input name=name placeholder='Name (optional, if the TV gets it wrong)'><button>Pin to TV</button></form>");
+                .append("<input name=name placeholder='Name (optional, if the TV gets it wrong)'>")
+                .append("<p class=s style='margin:6px 0 2px'>Only on these days and hours (leave all empty for always):</p><div class=days>");
+        for (int d : new int[] {2, 3, 4, 5, 6, 7, 1}) {
+            b.append("<label><input type=checkbox name=d").append(d).append(">").append(DAY[d]).append("</label>");
+        }
+        b.append("</div><div class=times><label>From<input type=time name=from></label><label>Until<input type=time name=to></label></div>")
+                .append("<button>Pin to TV</button></form>");
         List<Shelf.Entry> pins = Shelf.allPins();
         if (!pins.isEmpty()) b.append("<h2>PINNED</h2>");
         for (int i = pins.size() - 1; i >= 0; i--) {
             Shelf.Entry e = pins.get(i);
             b.append("<div class=pin>")
-                    .append(e.image != null ? "<img src='" + esc(e.image) + "' alt=''>" : "<div class=ph></div>")
-                    .append("<div class=t><b>").append(esc(e.title)).append("</b><span>").append(esc(appName(e.pkg))).append("</span></div>")
+                    .append(e.image != null && !e.image.startsWith("file:") ? "<img src='" + esc(e.image) + "' alt=''>" : "<div class=ph></div>")
+                    .append("<div class=t><b>").append(esc(e.title)).append("</b><span>").append(esc(appName(e.pkg)))
+                    .append(e.scheduled() ? " · " + esc(when(e)) : "").append("</span></div>")
                     .append("<form method=post action=/unpin><input type=hidden name=pkg value='").append(esc(e.pkg))
                     .append("'><input type=hidden name=title value='").append(esc(e.title)).append("'><button>Remove</button></form></div>");
         }
@@ -292,6 +392,7 @@ final class PinServer {
             case "com.suntv.sunnxt": return "Sun NXT";
             case "com.amazon.firebat": return "Prime Video";
             case "com.stremio.one": return "Stremio";
+            case YOUTUBE: return "YouTube (SmartTube)";
             default: return pkg;
         }
     }

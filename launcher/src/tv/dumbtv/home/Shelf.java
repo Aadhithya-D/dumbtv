@@ -43,13 +43,33 @@ final class Shelf {
         String pkg, id, title, subtitle = "", description = "", link, image;
         /** What the card says above the details, when the source knows better ("Up Next"). */
         String status = "";
+        /**
+         * A pin for set days and hours only: {@code days} holds Calendar weekdays ("23456" is
+         * Monday to Friday; empty is every day), {@code from}/{@code to} minutes since midnight
+         * (-1: all day). A window may run past midnight (22:00 to 02:00).
+         */
+        String days = "";
+        int from = -1, to = -1;
+
+        boolean scheduled() {
+            return !days.isEmpty() || from >= 0;
+        }
+
+        /** Whether a scheduled pin is due at {@code now}; an unscheduled one always is. */
+        boolean dueAt(java.util.Calendar now) {
+            if (!days.isEmpty() && days.indexOf((char) ('0' + now.get(java.util.Calendar.DAY_OF_WEEK))) < 0) return false;
+            if (from < 0 || to < 0) return true;
+            int m = now.get(java.util.Calendar.HOUR_OF_DAY) * 60 + now.get(java.util.Calendar.MINUTE);
+            return from <= to ? m >= from && m < to : m >= from || m < to;
+        }
         long progress, duration, watched;
 
         JSONObject json() throws org.json.JSONException {
             return new JSONObject().put("pkg", pkg).put("id", id).put("title", title)
                     .put("subtitle", subtitle).put("description", description).put("link", link)
                     .put("image", image == null ? "" : image).put("progress", progress)
-                    .put("duration", duration).put("watched", watched).put("status", status);
+                    .put("duration", duration).put("watched", watched).put("status", status)
+                    .put("days", days).put("from", from).put("to", to);
         }
 
         static Entry from(JSONObject o) {
@@ -66,6 +86,9 @@ final class Shelf {
             e.duration = o.optLong("duration");
             e.watched = o.optLong("watched");
             e.status = o.optString("status");
+            e.days = o.optString("days");
+            e.from = o.optInt("from", -1);
+            e.to = o.optInt("to", -1);
             return e;
         }
     }
@@ -182,9 +205,18 @@ final class Shelf {
     static synchronized List<Entry> forApp(String pkg, int max) {
         List<Entry> out = new ArrayList<>();
         Set<String> titles = new HashSet<>();
+        java.util.Calendar now = java.util.Calendar.getInstance();
+        // Pins for this hour first (a morning video), then the other pins.
         for (int i = pins.size() - 1; i >= 0 && out.size() < max; i--) {
             Entry e = pins.get(i);
-            if (e.pkg.equals(pkg)) {
+            if (e.pkg.equals(pkg) && e.scheduled() && e.dueAt(now)) {
+                out.add(e);
+                titles.add(e.title);
+            }
+        }
+        for (int i = pins.size() - 1; i >= 0 && out.size() < max; i--) {
+            Entry e = pins.get(i);
+            if (e.pkg.equals(pkg) && !e.scheduled()) {
                 out.add(e);
                 titles.add(e.title);
             }
