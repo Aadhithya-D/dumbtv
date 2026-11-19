@@ -22,6 +22,32 @@ final class Grid extends ViewGroup {
     private final android.graphics.Paint trayGlass = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
     private final android.graphics.Paint trayEdge = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
     private final android.graphics.Paint traySheen = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+    private final android.graphics.Paint bmpPaint = new android.graphics.Paint(
+            android.graphics.Paint.ANTI_ALIAS_FLAG | android.graphics.Paint.FILTER_BITMAP_FLAG);
+    private final android.graphics.RectF trayRect = new android.graphics.RectF();
+    private android.graphics.Bitmap glassBmp;
+
+    void setGlassBitmap(android.graphics.Bitmap b) {
+        glassBmp = b;
+        invalidate();
+    }
+
+    /** Screen-space bounds of the first-row tray, or null before layout. */
+    android.graphics.Rect trayScreenRect() {
+        int n = getChildCount();
+        if (!tray || n == 0 || getWidth() == 0) return null;
+        int cols = Math.min(n, columns());
+        View first = getChildAt(0), last = getChildAt(cols - 1);
+        if (first.getWidth() == 0) return null;
+        int pad = Ui.dp(getContext(), 12);
+        int[] at = new int[2];
+        getLocationOnScreen(at);
+        int l = at[0] + first.getLeft() - pad;
+        int t = at[1] + first.getTop() - pad;
+        int rt = at[0] + last.getRight() + pad;
+        int b = at[1] + first.getTop() + Math.round(first.getWidth() * 9f / 16f) + pad;
+        return new android.graphics.Rect(l, t, rt, b);
+    }
 
     Grid(Context c) {
         super(c);
@@ -47,15 +73,20 @@ final class Grid extends ViewGroup {
             float l = first.getLeft() - pad, t = first.getTop() - pad;
             // A tile keeps room under its card for a name; the tray hugs the 16:9 card itself.
             float rt = last.getRight() + pad, b = first.getTop() + first.getWidth() * 9f / 16f + pad;
-            canvas.drawRoundRect(l, t, rt, b, r, r, trayPaint);
-            trayGlass.setShader(new android.graphics.LinearGradient(l, t, l, b,
-                    new int[] {0x2EFFFFFF, 0x10FFFFFF}, null, android.graphics.Shader.TileMode.CLAMP));
-            canvas.drawRoundRect(l, t, rt, b, r, r, trayGlass);
-            canvas.drawRoundRect(l, t, rt, b, r, r, trayEdge);
-            traySheen.setShader(new android.graphics.LinearGradient(l + r, t, rt - r, t,
-                    new int[] {0x00FFFFFF, 0x6BFFFFFF, 0x00FFFFFF},
-                    new float[] {0f, 0.5f, 1f}, android.graphics.Shader.TileMode.CLAMP));
-            canvas.drawLine(l + r, t + Ui.dp(getContext(), 0.5f), rt - r, t + Ui.dp(getContext(), 0.5f), traySheen);
+            if (glassBmp != null && !glassBmp.isRecycled()) {
+                trayRect.set(l, t, rt, b);
+                canvas.drawBitmap(glassBmp, null, trayRect, bmpPaint);
+            } else {
+                canvas.drawRoundRect(l, t, rt, b, r, r, trayPaint);
+                trayGlass.setShader(new android.graphics.LinearGradient(l, t, l, b,
+                        new int[] {0x2EFFFFFF, 0x10FFFFFF}, null, android.graphics.Shader.TileMode.CLAMP));
+                canvas.drawRoundRect(l, t, rt, b, r, r, trayGlass);
+                canvas.drawRoundRect(l, t, rt, b, r, r, trayEdge);
+                traySheen.setShader(new android.graphics.LinearGradient(l + r, t, rt - r, t,
+                        new int[] {0x00FFFFFF, 0x6BFFFFFF, 0x00FFFFFF},
+                        new float[] {0f, 0.5f, 1f}, android.graphics.Shader.TileMode.CLAMP));
+                canvas.drawLine(l + r, t + Ui.dp(getContext(), 0.5f), rt - r, t + Ui.dp(getContext(), 0.5f), traySheen);
+            }
         }
         super.dispatchDraw(canvas);
     }

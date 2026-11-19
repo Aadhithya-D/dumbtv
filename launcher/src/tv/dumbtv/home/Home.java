@@ -88,6 +88,8 @@ public final class Home extends Activity implements Shelf.Listener {
     private ScrollView scroll;
     private LinearLayout column;
     private ImageView wallPrev, wall;
+    private Bitmap wallBitmap;
+    private int glassGeneration;
     private View shade;
     private View tint;
     private LinearLayout saverOverlay;
@@ -611,7 +613,6 @@ public final class Home extends Activity implements Shelf.Listener {
         spotTitle = Ui.text(this, 60, Ui.TEXT, android.graphics.Typeface.DEFAULT_BOLD);
         spotTitle.setLetterSpacing(-0.02f);
         spotTitle.setSingleLine(true);
-        spotTitle.setShadowLayer(dp(10), 0, dp(2), 0x99000000);
         spot.addView(spotTitle);
         spotDesc = Ui.text(this, 14, Ui.MUTED, Ui.MEDIUM);
         spotDesc.setMaxLines(1);
@@ -826,10 +827,8 @@ public final class Home extends Activity implements Shelf.Listener {
         greet = Ui.text(this, 12, Ui.MUTED, Ui.MEDIUM);
         greet.setLetterSpacing(0.18f);
         greet.setPadding(dp(2), 0, 0, dp(2));
-        greet.setShadowLayer(dp(6), 0, dp(1), 0x88000000);
         greet.setVisibility(View.GONE);
         clock = Ui.text(this, 52, Ui.TEXT, Ui.LIGHT);
-        clock.setShadowLayer(dp(8), 0, dp(2), 0x88000000);
         date = Ui.text(this, 15, Ui.MUTED, Ui.MEDIUM);
         date.setPadding(dp(2), dp(8), 0, 0);
         line = new LinearLayout(this);
@@ -903,6 +902,9 @@ public final class Home extends Activity implements Shelf.Listener {
         this.column = column;
 
         apps = new Row(Catalog.APPS, getString(R.string.row_apps), column);
+        apps.grid.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            if (wallBitmap != null && (l != ol || t != ot || r != or || b != ob)) refreshLiquidGlass();
+        });
         allApps = new Row(Catalog.ALL_APPS, getString(R.string.row_all_apps), column);
         allApps.setVisible(false);
         inputs = new Row(Catalog.INPUTS, getString(R.string.row_inputs), column);
@@ -914,12 +916,10 @@ public final class Home extends Activity implements Shelf.Listener {
         saverOverlay.setAlpha(0f);
         saverClock = Ui.text(this, 64, 0xF5FFFFFF, Ui.LIGHT);
         saverClock.setLetterSpacing(-0.02f);
-        saverClock.setShadowLayer(dp(14), 0, dp(3), 0xAA000000);
         saverDate = Ui.text(this, 13, 0xCCFFFFFF, Ui.MEDIUM);
         saverDate.setAllCaps(true);
         saverDate.setLetterSpacing(0.18f);
         saverDate.setPadding(dp(3), dp(6), 0, 0);
-        saverDate.setShadowLayer(dp(8), 0, dp(2), 0xAA000000);
         saverOverlay.addView(saverClock, new LinearLayout.LayoutParams(WRAP, WRAP));
         saverOverlay.addView(saverDate, new LinearLayout.LayoutParams(WRAP, WRAP));
         FrameLayout.LayoutParams saverLp = new FrameLayout.LayoutParams(WRAP, WRAP, Gravity.BOTTOM | Gravity.START);
@@ -1741,8 +1741,10 @@ public final class Home extends Activity implements Shelf.Listener {
         if (key == null ? wallKey == null : key.equals(wallKey)) return;
         wallKey = key;
         if (file == null) {
+            wallBitmap = null;
             wallPrev.setImageDrawable(null);
             wall.setImageDrawable(null);
+            refreshLiquidGlass();
             return;
         }
         io.execute(() -> {
@@ -1750,6 +1752,7 @@ public final class Home extends Activity implements Shelf.Listener {
                     getResources().getDisplayMetrics().heightPixels);
             ui.post(() -> {
                 if (!key.equals(wallKey) || b == null) return;
+                wallBitmap = b;
                 Drawable prev = wall.getDrawable();
                 if (prev != null) {
                     wallPrev.setImageDrawable(prev);
@@ -1761,7 +1764,48 @@ public final class Home extends Activity implements Shelf.Listener {
                 } else {
                     wall.setImageBitmap(b);
                 }
+                refreshLiquidGlass();
                 if (saverActive) startKenBurns();
+            });
+        });
+    }
+
+    /** Rebuilds the real optical Liquid Glass bitmaps for the dock and top-right capsule. */
+    private void refreshLiquidGlass() {
+        final int gen = ++glassGeneration;
+        if (wallBitmap == null || wallBitmap.isRecycled()) {
+            if (apps != null) apps.grid.setGlassBitmap(null);
+            if (capsule != null && iconChips()) {
+                capsule.setBackground(Ui.liquidGlass(0x36FFFFFF, 0x16FFFFFF, 0x50FFFFFF, dp(1), dp(999)));
+            }
+            return;
+        }
+        root.post(() -> {
+            if (gen != glassGeneration || wallBitmap == null || wallBitmap.isRecycled()) return;
+            final Bitmap src = wallBitmap;
+            final int sw = getResources().getDisplayMetrics().widthPixels;
+            final int sh = getResources().getDisplayMetrics().heightPixels;
+            final Rect dockRect = apps != null ? apps.grid.trayScreenRect() : null;
+            final Rect capRect;
+            if (capsule != null && iconChips() && capsule.getWidth() > 0 && capsule.getHeight() > 0) {
+                int[] at = new int[2];
+                capsule.getLocationOnScreen(at);
+                capRect = new Rect(at[0], at[1], at[0] + capsule.getWidth(), at[1] + capsule.getHeight());
+            } else {
+                capRect = null;
+            }
+            final float dockR = dp(22);
+            final float capR = capRect != null ? capRect.height() * 0.5f : dp(20);
+            io.execute(() -> {
+                Bitmap dockBmp = dockRect != null ? LiquidGlass.render(src, sw, sh, dockRect, dockR) : null;
+                Bitmap capBmp = capRect != null ? LiquidGlass.render(src, sw, sh, capRect, capR) : null;
+                ui.post(() -> {
+                    if (gen != glassGeneration) return;
+                    if (apps != null) apps.grid.setGlassBitmap(dockBmp);
+                    if (capsule != null && iconChips() && capBmp != null) {
+                        capsule.setBackground(new android.graphics.drawable.BitmapDrawable(getResources(), capBmp));
+                    }
+                });
             });
         });
     }
