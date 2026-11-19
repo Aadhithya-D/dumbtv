@@ -54,6 +54,7 @@ public final class Recorder extends NotificationListenerService {
     @Override
     public void onListenerConnected() {
         Shelf.open(this);
+        disk.execute(Shelf::forgetUnrecorded);
         disk.execute(Shelf::enrich);
         sessions = (MediaSessionManager) getSystemService(MEDIA_SESSION_SERVICE);
         me = new ComponentName(this, Recorder.class);
@@ -156,6 +157,7 @@ public final class Recorder extends NotificationListenerService {
 
         /** Hands the current title to the shelf, with its picture saved next to shelf.json. */
         void record() {
+            if (Shelf.UNRECORDED.contains(pkg)) return;
             final Shelf.Entry e = entry();
             if (e == null) return;
             final Bitmap art = art(meta);

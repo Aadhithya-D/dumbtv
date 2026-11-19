@@ -206,6 +206,38 @@ final class Shelf {
         return out;
     }
 
+    /**
+     * Apps whose playback is not recorded: Hotstar names only the episode ("S1 E1 …"), never
+     * the show, so its cards could neither be named nor given a picture.
+     */
+    static final java.util.Set<String> UNRECORDED = new HashSet<>(java.util.Arrays.asList("in.startv.hotstar"));
+
+    /** Drops what was recorded for apps that are no longer recorded. */
+    static void forgetUnrecorded() {
+        boolean any = false;
+        synchronized (Shelf.class) {
+            for (String pkg : UNRECORDED) any |= played.remove(pkg) != null;
+            if (any) save();
+        }
+        if (any) for (String pkg : UNRECORDED) changed(pkg);
+    }
+
+    /**
+     * Takes a title off Continue Watching. Recorded titles stay off until they play again;
+     * a list from an account (Netflix, Stremio, Jellyfin) shows it again if that app still does.
+     */
+    static void remove(Entry e) {
+        synchronized (Shelf.class) {
+            for (Map<String, List<Entry>> lists : java.util.Arrays.asList(played, watching)) {
+                List<Entry> list = lists.get(e.pkg);
+                if (list == null) continue;
+                for (int i = list.size() - 1; i >= 0; i--) if (same(list.get(i), e)) list.remove(i);
+            }
+            save();
+        }
+        changed(e.pkg);
+    }
+
     /** An app's whole Continue Watching from its account (Stremio), replacing the last one. */
     static void watching(String pkg, List<Entry> list) {
         // Pictures first (this runs off the UI thread), so the cards show them at once.

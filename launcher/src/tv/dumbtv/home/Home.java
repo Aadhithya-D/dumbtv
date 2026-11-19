@@ -1458,12 +1458,16 @@ public final class Home extends Activity implements Shelf.Listener {
         boolean pin = Shelf.pinned(card.entry);
         new AlertDialog.Builder(this, Ui.DIALOG)
                 .setTitle(card.entry.title)
-                .setItems(new String[] {"Open", pin ? "Unpin" : "Pin to shelf"}, (d, which) -> {
+                .setItems(new String[] {"Open", pin ? "Unpin" : "Pin to shelf", "Remove from Continue Watching"}, (d, which) -> {
                     if (which == 0) {
                         openEntry(card.entry);
-                    } else {
+                    } else if (which == 1) {
                         Shelf.pin(card.entry, !pin);
                         Toast.makeText(this, pin ? "Unpinned" : "Pinned", Toast.LENGTH_SHORT).show();
+                    } else {
+                        if (pin) Shelf.pin(card.entry, false);
+                        Shelf.remove(card.entry);
+                        Toast.makeText(this, "Removed", Toast.LENGTH_SHORT).show();
                     }
                 })
                 .show();
