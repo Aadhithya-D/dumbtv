@@ -114,6 +114,29 @@ final class Shelf {
         load();
     }
 
+    /** Gives saved titles without a picture one from TMDB. Network: not on the UI thread. */
+    static void enrich() {
+        List<Entry> missing = new ArrayList<>();
+        synchronized (Shelf.class) {
+            for (List<Entry> list : played.values()) for (Entry e : list) if (e.image == null) missing.add(e);
+        }
+        boolean any = false;
+        for (Entry e : missing) {
+            String img = Tmdb.backdrop(dir(), e.title);
+            if (img == null) continue;
+            synchronized (Shelf.class) {
+                e.image = img;
+            }
+            any = true;
+            changed(e.pkg);
+        }
+        if (any) {
+            synchronized (Shelf.class) {
+                save();
+            }
+        }
+    }
+
     static synchronized File dir() {
         return dir;
     }
@@ -169,6 +192,9 @@ final class Shelf {
     /** A title an app played, from {@link Recorder}: moves to the front of that app's list. */
     static void played(Entry e) {
         if (e == null || e.pkg == null || e.title == null) return;
+        // No picture from the app: TMDB's backdrop for the title, when a key is set (network,
+        // so this runs on the Recorder's own thread; answers are cached).
+        if (e.image == null) e.image = Tmdb.backdrop(dir(), e.title);
         synchronized (Shelf.class) {
             List<Entry> list = played.get(e.pkg);
             if (list == null) played.put(e.pkg, list = new ArrayList<>());

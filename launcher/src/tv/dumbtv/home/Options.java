@@ -509,6 +509,11 @@ public final class Options extends Activity {
         pinBody.setPadding(0, dp(6), 0, 0);
         pinCard.addView(pinBody);
         wrap.addView(pinCard, new LinearLayout.LayoutParams(MATCH, WRAP));
+        TextView credit = Ui.text(this, 9.5f, TERTIARY, Ui.REGULAR);
+        credit.setText(R.string.opt_tmdb_credit);
+        credit.setLineSpacing(0, 1.35f);
+        credit.setPadding(dp(9), dp(12), dp(9), 0);
+        wrap.addView(credit);
         return wrap;
     }
 

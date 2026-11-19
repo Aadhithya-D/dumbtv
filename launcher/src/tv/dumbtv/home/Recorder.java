@@ -54,6 +54,7 @@ public final class Recorder extends NotificationListenerService {
     @Override
     public void onListenerConnected() {
         Shelf.open(this);
+        disk.execute(Shelf::enrich);
         sessions = (MediaSessionManager) getSystemService(MEDIA_SESSION_SERVICE);
         me = new ComponentName(this, Recorder.class);
         try {
