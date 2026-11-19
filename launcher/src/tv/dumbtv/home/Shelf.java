@@ -523,35 +523,45 @@ final class Shelf {
     private static void load() {
         File f = new File(dir, "shelf.json");
         if (!f.isFile()) return;
+        JSONObject root;
         try (InputStream in = new java.io.FileInputStream(f)) {
             byte[] b = new byte[(int) f.length()];
             int off = 0;
             for (int n; off < b.length && (n = in.read(b, off, b.length - off)) > 0; ) off += n;
-            JSONObject root = new JSONObject(new String(b, 0, off, StandardCharsets.UTF_8));
-            JSONObject w = root.optJSONObject("watching");
-            if (w != null) {
-                for (java.util.Iterator<String> it = w.keys(); it.hasNext(); ) {
-                    String pkg = it.next();
-                    JSONArray a = w.getJSONArray(pkg);
-                    List<Entry> list = new ArrayList<>();
-                    for (int i = 0; i < a.length(); i++) list.add(Entry.from(a.getJSONObject(i)));
-                    watching.put(pkg, list);
+            root = new JSONObject(new String(b, 0, off, StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            // Unreadable: keep it aside rather than let the next save write over the pins in it.
+            f.renameTo(new File(dir, "shelf.json.broken"));
+            return;
+        }
+        // Each part on its own, and each title on its own: one bad entry costs only itself,
+        // never the pins after it.
+        lists(root.optJSONObject("watching"), watching);
+        lists(root.optJSONObject("played"), played);
+        JSONArray p = root.optJSONArray("pins");
+        for (int i = 0; p != null && i < p.length(); i++) {
+            try {
+                pins.add(Entry.from(p.getJSONObject(i)));
+            } catch (Exception ignored) {
+                // skip this one pin
+            }
+        }
+    }
+
+    private static void lists(JSONObject src, Map<String, List<Entry>> into) {
+        if (src == null) return;
+        for (java.util.Iterator<String> it = src.keys(); it.hasNext(); ) {
+            String pkg = it.next();
+            JSONArray a = src.optJSONArray(pkg);
+            List<Entry> list = new ArrayList<>();
+            for (int i = 0; a != null && i < a.length(); i++) {
+                try {
+                    list.add(Entry.from(a.getJSONObject(i)));
+                } catch (Exception ignored) {
+                    // skip this one title
                 }
             }
-            JSONObject pl = root.optJSONObject("played");
-            if (pl != null) {
-                for (java.util.Iterator<String> it = pl.keys(); it.hasNext(); ) {
-                    String pkg = it.next();
-                    JSONArray a = pl.getJSONArray(pkg);
-                    List<Entry> list = new ArrayList<>();
-                    for (int i = 0; i < a.length(); i++) list.add(Entry.from(a.getJSONObject(i)));
-                    played.put(pkg, list);
-                }
-            }
-            JSONArray p = root.optJSONArray("pins");
-            if (p != null) for (int i = 0; i < p.length(); i++) pins.add(Entry.from(p.getJSONObject(i)));
-        } catch (Exception ignored) {
-            // a damaged file starts the shelf empty
+            into.put(pkg, list);
         }
     }
 
