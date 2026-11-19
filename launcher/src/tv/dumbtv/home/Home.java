@@ -869,7 +869,7 @@ public final class Home extends Activity implements Shelf.Listener {
         capsule.setClipToPadding(false);
         netChip = chip(getString(R.string.network_wifi), R.drawable.chip_wifi, R.drawable.chip_wifi_mark,
                 v -> {
-                    if (!netOnline) openNetworkSettings();
+                    if (!netOnline || netMbps > 0) openNetworkSettings();
                     else runSpeedCheck();
                 });
         netChip.setOnLongClickListener(v -> {
@@ -2003,14 +2003,37 @@ public final class Home extends Activity implements Shelf.Listener {
     }
 
     private void checkNetwork() {
-        boolean online = hasPhysicalInternet();
-        boolean changed = online != netOnline;
-        netOnline = online;
-        if (changed) {
+        boolean physical = hasPhysicalInternet();
+        if (!physical) {
+            netOnline = false;
             netTesting = false;
-            if (!online) netMbps = -1;
+            netMbps = -1;
+            if (netChip != null) updateNetChip();
+            return;
         }
+        // Physical link is up; verify real internet reachability in the background so a router
+        // without internet still flips to Offline automatically without needing a click.
         if (netChip != null) updateNetChip();
+        io.execute(() -> {
+            boolean reachable = false;
+            try (java.net.Socket s = new java.net.Socket()) {
+                s.connect(new java.net.InetSocketAddress("1.1.1.1", 443), 2500);
+                reachable = true;
+            } catch (Exception ignored) {
+                reachable = false;
+            }
+            final boolean ok = reachable;
+            ui.post(() -> {
+                if (ok != netOnline) {
+                    netOnline = ok;
+                    if (!ok) {
+                        netTesting = false;
+                        netMbps = -1;
+                    }
+                    if (netChip != null) updateNetChip();
+                }
+            });
+        });
     }
 
     private void updateNetChip() {
@@ -2036,6 +2059,7 @@ public final class Home extends Activity implements Shelf.Listener {
 
     private void updateNetChipLook(boolean focused) {
         if (netChip == null) return;
+        if (!focused && !netTesting && netMbps > 0) netMbps = -1;
         boolean icons = iconChips();
         if (!netOnline) {
             String label = getString(focused ? R.string.network_offline_focus : R.string.network_offline);
