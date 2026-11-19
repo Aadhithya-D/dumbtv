@@ -34,6 +34,9 @@ import java.util.regex.Pattern;
  * {@code FTVIntegrationSDK}. This reads that log (READ_LOGS, granted over adb) and keeps the
  * latest list per app in {@code shelf.json}, so the shelf survives a reboot. Pins are copies of
  * entries the person chose to keep, with their picture saved next to them.
+ *
+ * <p>Apps without that SDK still say what they play through their media session; {@link Recorder}
+ * hands those titles to {@link #played}, kept per app as the shelf's Recently watched.
  */
 final class Shelf {
     static final class Entry {
@@ -86,19 +89,22 @@ final class Shelf {
     }
 
     private static final Map<String, List<Entry>> watching = new HashMap<>();
+    /** What {@link Recorder} saw each app play, newest first. */
+    private static final Map<String, List<Entry>> played = new HashMap<>();
+    private static final int PLAYED_MAX = 12;
     private static final Map<String, Map<String, long[]>> watchedAt = new HashMap<>();
     private static final List<Entry> pins = new ArrayList<>();
     private static final Handler main = new Handler(Looper.getMainLooper());
     private static Listener listener;
     private static File dir;
-    private static boolean started;
+    private static boolean started, opened;
 
     private Shelf() {}
 
-    /** Loads the saved shelf and starts following the log; once per process. */
-    static synchronized void start(Context c) {
-        if (started) return;
-        started = true;
+    /** Loads the saved shelf; once per process. {@link Recorder} needs only this. */
+    static synchronized void open(Context c) {
+        if (opened) return;
+        opened = true;
         // Next to home.conf, so it can be backed up and read with adb like the settings.
         File ext = c.getExternalFilesDir(null);
         dir = ext != null ? ext : c.getFilesDir();
@@ -106,6 +112,22 @@ final class Shelf {
             new File(c.getFilesDir(), "shelf.json").renameTo(new File(ext, "shelf.json"));
         }
         load();
+    }
+
+    static synchronized File dir() {
+        return dir;
+    }
+
+    /** Where shelf pictures are kept. */
+    static synchronized File imageDir() {
+        return dir == null ? null : new File(dir, "shelf-img");
+    }
+
+    /** Loads the saved shelf and starts following the log; once per process. */
+    static synchronized void start(Context c) {
+        if (started) return;
+        started = true;
+        open(c);
         PinServer.start(c);
         Thread t = new Thread(Shelf::follow, "shelf-log");
         t.setDaemon(true);
@@ -131,10 +153,37 @@ final class Shelf {
         if (list != null) {
             for (Entry e : list) {
                 if (out.size() >= max) break;
-                if (!titles.contains(e.title)) out.add(e);
+                if (titles.add(e.title)) out.add(e);
+            }
+        }
+        list = played.get(pkg);
+        if (list != null) {
+            for (Entry e : list) {
+                if (out.size() >= max) break;
+                if (titles.add(e.title)) out.add(e);
             }
         }
         return out;
+    }
+
+    /** A title an app played, from {@link Recorder}: moves to the front of that app's list. */
+    static void played(Entry e) {
+        if (e == null || e.pkg == null || e.title == null) return;
+        synchronized (Shelf.class) {
+            List<Entry> list = played.get(e.pkg);
+            if (list == null) played.put(e.pkg, list = new ArrayList<>());
+            for (int i = list.size() - 1; i >= 0; i--) {
+                Entry old = list.get(i);
+                if (!same(old, e)) continue;
+                // A later update without a picture keeps the one already saved.
+                if (e.image == null) e.image = old.image;
+                list.remove(i);
+            }
+            list.add(0, e);
+            while (list.size() > PLAYED_MAX) list.remove(list.size() - 1);
+            save();
+        }
+        changed(e.pkg);
     }
 
     /** Every pin, oldest first. */
@@ -165,6 +214,10 @@ final class Shelf {
     /** The saved picture for {@code e}, downloading it first if needed; null when offline. Not on the UI thread. */
     static File image(Entry e) {
         if (e.image == null || dir == null) return null;
+        if (e.image.startsWith("file:")) {
+            File local = new File(e.image.substring(5));
+            return local.length() > 0 ? local : null;
+        }
         File cache = new File(dir, "shelf-img");
         File f = new File(cache, Integer.toHexString(e.image.hashCode()) + ".jpg");
         if (f.length() > 0) return f;
@@ -355,6 +408,16 @@ final class Shelf {
                     watching.put(pkg, list);
                 }
             }
+            JSONObject pl = root.optJSONObject("played");
+            if (pl != null) {
+                for (java.util.Iterator<String> it = pl.keys(); it.hasNext(); ) {
+                    String pkg = it.next();
+                    JSONArray a = pl.getJSONArray(pkg);
+                    List<Entry> list = new ArrayList<>();
+                    for (int i = 0; i < a.length(); i++) list.add(Entry.from(a.getJSONObject(i)));
+                    played.put(pkg, list);
+                }
+            }
             JSONArray p = root.optJSONArray("pins");
             if (p != null) for (int i = 0; i < p.length(); i++) pins.add(Entry.from(p.getJSONObject(i)));
         } catch (Exception ignored) {
@@ -371,11 +434,17 @@ final class Shelf {
                 for (Entry x : e.getValue()) a.put(x.json());
                 w.put(e.getKey(), a);
             }
+            JSONObject pl = new JSONObject();
+            for (Map.Entry<String, List<Entry>> e : played.entrySet()) {
+                JSONArray a = new JSONArray();
+                for (Entry x : e.getValue()) a.put(x.json());
+                pl.put(e.getKey(), a);
+            }
             JSONArray p = new JSONArray();
             for (Entry x : pins) p.put(x.json());
             File part = new File(dir, "shelf.json.part");
             try (OutputStream out = new FileOutputStream(part)) {
-                out.write(new JSONObject().put("watching", w).put("pins", p).toString().getBytes(StandardCharsets.UTF_8));
+                out.write(new JSONObject().put("watching", w).put("played", pl).put("pins", p).toString().getBytes(StandardCharsets.UTF_8));
             }
             part.renameTo(new File(dir, "shelf.json"));
         } catch (Exception ignored) {

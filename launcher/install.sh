@@ -81,11 +81,25 @@ if [[ $mode == undo ]]; then
   sh_ appops set $PKG AUTO_START default >/dev/null 2>&1 || true
   set_futurity off
   set_guard ""
+  sh_ cmd notification disallow_listener $PKG/$PKG.Recorder >/dev/null 2>&1 || true
   sh_ dumpsys deviceidle whitelist -$PKG >/dev/null 2>&1 || true
   sh_ am start -a android.intent.action.MAIN -c android.intent.category.HOME >/dev/null 2>&1 || true
   echo "HOME handed back to Amazon's launcher (dumbtv home stays installed: adb uninstall $PKG)"
   exit 0
 fi
+
+# Top Shelf on every sdk: READ_LOGS reads Continue Watching from apps built with Amazon's SDK
+# (Netflix), and the Recorder, a notification listener, records what any other app plays from
+# its media session. It reads no notifications. Both are optional: a refusal only leaves the
+# shelf emptier.
+shelf_access() {
+  sh_ pm grant $PKG android.permission.READ_LOGS >/dev/null 2>&1 || true
+  if sh_ cmd notification allow_listener $PKG/$PKG.Recorder >/dev/null 2>&1; then
+    echo "top shelf: recording what apps play (undo: $0 --undo)"
+  else
+    echo "note: Fire OS refused the Top Shelf recorder; the shelf shows Netflix and pins only"
+  fi
+}
 
 build_apk() {
   ./build.sh
@@ -171,6 +185,7 @@ if [[ $dev_sdk -lt 28 ]]; then
     echo "error: dumbtv home is installed but not in front ($front)" >&2
     exit 1
   fi
+  shelf_access
   echo "home: dumbtv (Keeper, no accessibility; sdk $dev_sdk)"
   exit 0
 fi
@@ -213,6 +228,7 @@ if [[ $bound == 0 ]]; then
   exit 1
 fi
 start_home $PKG/.Home
+shelf_access
 if installed com.spocky.projengmenu; then
   echo "note: Projectivy is still installed but no longer used — adb uninstall com.spocky.projengmenu"
 fi

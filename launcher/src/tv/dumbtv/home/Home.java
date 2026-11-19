@@ -1368,6 +1368,14 @@ public final class Home extends Activity implements Shelf.Listener {
     }
 
     private void openEntry(Shelf.Entry e) {
+        // Recently watched from a media session has no link: open the app, whose own
+        // Continue Watching usually leads.
+        if (e.link == null || e.link.isEmpty()) {
+            Intent launch = getPackageManager().getLeanbackLaunchIntentForPackage(e.pkg);
+            if (launch == null) launch = getPackageManager().getLaunchIntentForPackage(e.pkg);
+            if (launch != null) startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            return;
+        }
         Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(e.link)).setPackage(e.pkg)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {

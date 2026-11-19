@@ -98,6 +98,19 @@
             </intent-filter>
         </receiver>
 
+        <!-- Top Shelf's Recently watched: as a notification listener it may read the media
+             sessions apps announce while they play. It reads no notifications. Allowed by
+             install.sh with cmd notification allow_listener. -->
+        <service
+            android:name=".Recorder"
+            android:label="@string/recorder_label"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <service
             android:name=".Guard"
             android:label="@string/guard_label"
