@@ -39,13 +39,13 @@ final class Grid extends ViewGroup {
         int cols = Math.min(n, columns());
         View first = getChildAt(0), last = getChildAt(cols - 1);
         if (first.getWidth() == 0) return null;
-        int pad = Ui.dp(getContext(), 12);
+        int padX = Ui.dp(getContext(), 18), padY = Ui.dp(getContext(), 16);
         int[] at = new int[2];
         getLocationOnScreen(at);
-        int l = at[0] + first.getLeft() - pad;
-        int t = at[1] + first.getTop() - pad;
-        int rt = at[0] + last.getRight() + pad;
-        int b = at[1] + first.getTop() + Math.round(first.getWidth() * 9f / 16f) + pad;
+        int l = at[0] + first.getLeft() - padX;
+        int t = at[1] + first.getTop() - padY;
+        int rt = at[0] + last.getRight() + padX;
+        int b = at[1] + first.getTop() + Math.round(first.getWidth() * 9f / 16f) + padY;
         return new android.graphics.Rect(l, t, rt, b);
     }
 
@@ -69,10 +69,10 @@ final class Grid extends ViewGroup {
         if (tray && n > 0) {
             int cols = Math.min(n, columns());
             View first = getChildAt(0), last = getChildAt(cols - 1);
-            float pad = Ui.dp(getContext(), 12), r = Ui.dp(getContext(), 22);
-            float l = first.getLeft() - pad, t = first.getTop() - pad;
+            float padX = Ui.dp(getContext(), 18), padY = Ui.dp(getContext(), 16), r = Ui.dp(getContext(), 28);
+            float l = first.getLeft() - padX, t = first.getTop() - padY;
             // A tile keeps room under its card for a name; the tray hugs the 16:9 card itself.
-            float rt = last.getRight() + pad, b = first.getTop() + first.getWidth() * 9f / 16f + pad;
+            float rt = last.getRight() + padX, b = first.getTop() + first.getWidth() * 9f / 16f + padY;
             if (glassBmp != null && !glassBmp.isRecycled()) {
                 trayRect.set(l, t, rt, b);
                 canvas.drawBitmap(glassBmp, null, trayRect, bmpPaint);

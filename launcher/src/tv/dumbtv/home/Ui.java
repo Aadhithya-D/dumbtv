@@ -17,10 +17,26 @@ final class Ui {
     static final int FAINT = 0x66FFFFFF;
     static final int SURFACE = 0xFF1C1D21;
     static final int DIALOG = android.R.style.Theme_DeviceDefault_Dialog_Alert;
-    static final Typeface LIGHT = Typeface.create("sans-serif-light", Typeface.NORMAL);
-    static final Typeface MEDIUM = Typeface.create("sans-serif-medium", Typeface.NORMAL);
+    static Typeface LIGHT = Typeface.create("sans-serif-light", Typeface.NORMAL);
+    static Typeface REGULAR = Typeface.create("sans-serif", Typeface.NORMAL);
+    static Typeface MEDIUM = Typeface.create("sans-serif-medium", Typeface.NORMAL);
+    static Typeface SEMIBOLD = Typeface.create("sans-serif-medium", Typeface.BOLD);
+    private static boolean fontsLoaded;
 
     private Ui() {}
+
+    static void initFonts(Context c) {
+        if (fontsLoaded || c == null) return;
+        fontsLoaded = true;
+        try {
+            LIGHT = Typeface.createFromAsset(c.getAssets(), "fonts/Allo-Light.otf");
+            REGULAR = Typeface.createFromAsset(c.getAssets(), "fonts/Allo-Regular.otf");
+            MEDIUM = Typeface.createFromAsset(c.getAssets(), "fonts/Allo-Medium.otf");
+            SEMIBOLD = Typeface.createFromAsset(c.getAssets(), "fonts/Allo-SemiBold.otf");
+        } catch (RuntimeException ignored) {
+            // Tests or builds without bundled assets fall back cleanly to system sans-serif.
+        }
+    }
 
     static int dp(Context c, float v) {
         return Math.round(v * c.getResources().getDisplayMetrics().density);
@@ -32,10 +48,11 @@ final class Ui {
     }
 
     static TextView text(Context c, float sp, int color, Typeface face) {
+        initFonts(c);
         TextView v = new TextView(c);
         v.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
         v.setTextColor(color);
-        v.setTypeface(face);
+        v.setTypeface(face == Typeface.DEFAULT_BOLD ? SEMIBOLD : face == null ? REGULAR : face);
         v.setIncludeFontPadding(false);
         return v;
     }

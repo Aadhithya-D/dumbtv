@@ -71,7 +71,7 @@ public final class Home extends Activity implements Shelf.Listener {
     private final List<TextView> chips = new ArrayList<>();
     private LinearLayout capsule;
     private View capsuleSep;
-    private TextView netChip;
+    private TextView netChip, wallChip;
     private ConnectivityManager cm;
     private ConnectivityManager.NetworkCallback netWatch;
     private boolean netOnline = true, netTesting;
@@ -247,6 +247,7 @@ public final class Home extends Activity implements Shelf.Listener {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        Ui.initFonts(this);
         Future<List<Item>> catalog = io.submit(() -> Catalog.apps(this));
         cfg = Config.get(this);
         Future<Map<String, Long>> times = recentFor(Catalog.APPS) == null ? null
@@ -483,6 +484,11 @@ public final class Home extends Activity implements Shelf.Listener {
             View f = getCurrentFocus();
             if (f instanceof Tile) menu((Tile) f);
             else startActivity(new Intent(this, Options.class));
+            return true;
+        }
+        if (code == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE && e.getRepeatCount() == 0 && !locked()) {
+            cfg.nextWallpaper();
+            background();
             return true;
         }
         return super.onKeyDown(code, e);
@@ -829,6 +835,7 @@ public final class Home extends Activity implements Shelf.Listener {
         greet.setPadding(dp(2), 0, 0, dp(2));
         greet.setVisibility(View.GONE);
         clock = Ui.text(this, 52, Ui.TEXT, Ui.LIGHT);
+        clock.setFontFeatureSettings("tnum");
         date = Ui.text(this, 15, Ui.MUTED, Ui.MEDIUM);
         date.setPadding(dp(2), dp(8), 0, 0);
         line = new LinearLayout(this);
@@ -868,6 +875,16 @@ public final class Home extends Activity implements Shelf.Listener {
             return true;
         });
         capsule.addView(netChip);
+        wallChip = chip(getString(R.string.wallpaper_chip), R.drawable.chip_wallpaper, R.drawable.chip_wallpaper_mark,
+                v -> {
+                    cfg.nextWallpaper();
+                    background();
+                });
+        wallChip.setOnLongClickListener(v -> {
+            enterSaver();
+            return true;
+        });
+        capsule.addView(wallChip);
         capsuleSep = new View(this);
         capsuleSep.setBackgroundColor(0x22FFFFFF);
         LinearLayout.LayoutParams capSepLp = new LinearLayout.LayoutParams(dp(1), dp(16));
@@ -915,6 +932,7 @@ public final class Home extends Activity implements Shelf.Listener {
         saverOverlay.setVisibility(View.GONE);
         saverOverlay.setAlpha(0f);
         saverClock = Ui.text(this, 64, 0xF5FFFFFF, Ui.LIGHT);
+        saverClock.setFontFeatureSettings("tnum");
         saverClock.setLetterSpacing(-0.02f);
         saverDate = Ui.text(this, 13, 0xCCFFFFFF, Ui.MEDIUM);
         saverDate.setAllCaps(true);
@@ -1070,14 +1088,24 @@ public final class Home extends Activity implements Shelf.Listener {
             chipLook(c, c.isFocused());
             c.setVisibility(locked() ? View.GONE : View.VISIBLE);
         }
-        greet.setVisibility(tv && "on".equals(cfg.get(Config.GREETING)) ? View.VISIBLE : View.GONE);
+        greet.setVisibility(View.GONE);
         line.setOrientation(tv ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
         line.setGravity(tv ? Gravity.CENTER_VERTICAL : Gravity.NO_GRAVITY);
+        if (tv) {
+            line.setPadding(dp(16), dp(9), dp(16), dp(9));
+            line.setBackground(Ui.liquidGlass(0x36FFFFFF, 0x16FFFFFF, 0x50FFFFFF, dp(1), dp(999)));
+            LinearLayout.LayoutParams lineLp = new LinearLayout.LayoutParams(WRAP, WRAP);
+            lineLp.topMargin = dp(6);
+            line.setLayoutParams(lineLp);
+        } else {
+            line.setPadding(0, 0, 0, 0);
+            line.setBackground(null);
+        }
         sep.setVisibility(tv ? View.VISIBLE : View.GONE);
-        clock.setTextSize(tv ? 34 : 52);
-        date.setTextSize(tv ? 13 : 15);
+        clock.setTextSize(tv ? 20 : 52);
+        date.setTextSize(tv ? 12 : 15);
         date.setAllCaps(tv);
-        date.setLetterSpacing(tv ? 0.16f : 0f);
+        date.setLetterSpacing(tv ? 0.14f : 0f);
         date.setPadding(tv ? 0 : dp(2), tv ? 0 : dp(8), 0, 0);
         // The shelf's log reader and pin page only run while Top Shelf is on (in Apple TV style).
         if (tv && !"off".equals(cfg.get(Config.SHELF))) Shelf.start(this);
@@ -1671,7 +1699,7 @@ public final class Home extends Activity implements Shelf.Listener {
         // The big name sits above a single row of apps; a grid or All apps would run into it.
         boolean tv = tvStyle();
         boolean glowMode = spotMode || "aurora".equals(mode);
-        spot.setVisibility(tv || spotMode && !"grid".equals(cfg.get(Config.LAYOUT))
+        spot.setVisibility(!tv && spotMode && !"grid".equals(cfg.get(Config.LAYOUT))
                 && !"on".equals(cfg.get(Config.ALL_APPS)) ? View.VISIBLE : View.GONE);
         spotTitle.setTextSize(tv ? 30 : 44);
         int screenH = getResources().getDisplayMetrics().heightPixels;
@@ -1680,7 +1708,7 @@ public final class Home extends Activity implements Shelf.Listener {
             spotLp.topMargin = spotTop;
             spot.setLayoutParams(spotLp);
         }
-        Tile.focusScale = spotMode && !tv ? 1.12f : 1.08f;
+        Tile.focusScale = tv ? 1.05f : (spotMode ? 1.12f : 1.08f);
         boolean image = "image".equals(mode) || "adaptive-tint".equals(mode);
         File file = image ? cfg.wallpaper() : null;
         tintWallpaper = "adaptive-tint".equals(mode) && file != null;
@@ -1770,13 +1798,16 @@ public final class Home extends Activity implements Shelf.Listener {
         });
     }
 
-    /** Rebuilds the real optical Liquid Glass bitmaps for the dock and top-right capsule. */
+    /** Rebuilds the real optical Liquid Glass bitmaps for the dock, clock pill and top-right capsule. */
     private void refreshLiquidGlass() {
         final int gen = ++glassGeneration;
         if (wallBitmap == null || wallBitmap.isRecycled()) {
             if (apps != null) apps.grid.setGlassBitmap(null);
             if (capsule != null && iconChips()) {
                 capsule.setBackground(Ui.liquidGlass(0x36FFFFFF, 0x16FFFFFF, 0x50FFFFFF, dp(1), dp(999)));
+            }
+            if (line != null && tvStyle()) {
+                line.setBackground(Ui.liquidGlass(0x36FFFFFF, 0x16FFFFFF, 0x50FFFFFF, dp(1), dp(999)));
             }
             return;
         }
@@ -1794,16 +1825,29 @@ public final class Home extends Activity implements Shelf.Listener {
             } else {
                 capRect = null;
             }
-            final float dockR = dp(22);
+            final Rect clockRect;
+            if (line != null && tvStyle() && line.getWidth() > 0 && line.getHeight() > 0) {
+                int[] at = new int[2];
+                line.getLocationOnScreen(at);
+                clockRect = new Rect(at[0], at[1], at[0] + line.getWidth(), at[1] + line.getHeight());
+            } else {
+                clockRect = null;
+            }
+            final float dockR = dp(28);
             final float capR = capRect != null ? capRect.height() * 0.5f : dp(20);
+            final float clockR = clockRect != null ? clockRect.height() * 0.5f : dp(20);
             io.execute(() -> {
                 Bitmap dockBmp = dockRect != null ? LiquidGlass.render(src, sw, sh, dockRect, dockR) : null;
                 Bitmap capBmp = capRect != null ? LiquidGlass.render(src, sw, sh, capRect, capR) : null;
+                Bitmap clockBmp = clockRect != null ? LiquidGlass.render(src, sw, sh, clockRect, clockR) : null;
                 ui.post(() -> {
                     if (gen != glassGeneration) return;
                     if (apps != null) apps.grid.setGlassBitmap(dockBmp);
                     if (capsule != null && iconChips() && capBmp != null) {
                         capsule.setBackground(new android.graphics.drawable.BitmapDrawable(getResources(), capBmp));
+                    }
+                    if (line != null && tvStyle() && clockBmp != null) {
+                        line.setBackground(new android.graphics.drawable.BitmapDrawable(getResources(), clockBmp));
                     }
                 });
             });

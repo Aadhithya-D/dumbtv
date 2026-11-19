@@ -13,6 +13,7 @@
     <string name="network_offline_focus">Offline · Wi-Fi</string>
     <string name="network_testing">Testing…</string>
     <string name="network_mbps">%1$d Mbps</string>
+    <string name="wallpaper_chip">Wallpaper</string>
     <string name="row_apps">Apps</string>
     <string name="row_inputs">Inputs</string>
     <string name="row_all_apps">All apps</string>
