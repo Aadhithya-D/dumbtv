@@ -114,6 +114,7 @@ final class ShelfCard extends View {
     /** "Continue", "Pinned" or "Watched", and what is left: "38 min left", or the episode. */
     private String statusLine() {
         if (pinned) return "Pinned";
+        if (entry.status != null && !entry.status.isEmpty()) return entry.status;
         return entry.duration > 0 && entry.progress > 0 ? "Continue" : "Recently watched";
     }
 

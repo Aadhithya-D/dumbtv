@@ -41,13 +41,15 @@ import java.util.regex.Pattern;
 final class Shelf {
     static final class Entry {
         String pkg, id, title, subtitle = "", description = "", link, image;
+        /** What the card says above the details, when the source knows better ("Up Next"). */
+        String status = "";
         long progress, duration, watched;
 
         JSONObject json() throws org.json.JSONException {
             return new JSONObject().put("pkg", pkg).put("id", id).put("title", title)
                     .put("subtitle", subtitle).put("description", description).put("link", link)
                     .put("image", image == null ? "" : image).put("progress", progress)
-                    .put("duration", duration).put("watched", watched);
+                    .put("duration", duration).put("watched", watched).put("status", status);
         }
 
         static Entry from(JSONObject o) {
@@ -63,6 +65,7 @@ final class Shelf {
             e.progress = o.optLong("progress");
             e.duration = o.optLong("duration");
             e.watched = o.optLong("watched");
+            e.status = o.optString("status");
             return e;
         }
     }
@@ -205,6 +208,8 @@ final class Shelf {
 
     /** An app's whole Continue Watching from its account (Stremio), replacing the last one. */
     static void watching(String pkg, List<Entry> list) {
+        // Pictures first (this runs off the UI thread), so the cards show them at once.
+        for (Entry e : list) image(e);
         synchronized (Shelf.class) {
             watching.put(pkg, new ArrayList<>(list));
             save();
@@ -220,6 +225,7 @@ final class Shelf {
         // Sun NXT: its own id (a link straight to the title) and its own cover, by title.
         if (e.link == null) SunNxt.enrich(dir(), e);
         if (e.image == null) e.image = Tmdb.backdrop(dir(), e.title);
+        image(e);
         synchronized (Shelf.class) {
             List<Entry> list = played.get(e.pkg);
             if (list == null) played.put(e.pkg, list = new ArrayList<>());

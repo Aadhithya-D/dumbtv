@@ -28,7 +28,10 @@
         android:banner="@drawable/banner"
         android:theme="@style/Home"
         android:allowBackup="false"
+        android:usesCleartextTraffic="true"
         android:supportsRtl="true">
+        <!-- usesCleartextTraffic: a Jellyfin server on the home network answers on plain
+             http://; everything on the internet (TMDB, Stremio, Sun NXT) is still https. -->
 
         <activity
             android:name=".Home"

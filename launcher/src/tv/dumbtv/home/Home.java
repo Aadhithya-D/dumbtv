@@ -375,7 +375,10 @@ public final class Home extends Activity implements Shelf.Listener {
         startNetworkWatch();
         scheduleWallRotate();
         // Accounts with their own Continue Watching (Stremio): fetched on return, at most every 2 min.
-        if (tvStyle() && !"off".equals(cfg.get(Config.SHELF))) net.execute(() -> Stremio.refresh(Shelf.dir(), false));
+        if (tvStyle() && !"off".equals(cfg.get(Config.SHELF))) {
+            net.execute(() -> Stremio.refresh(Shelf.dir(), false));
+            net.execute(() -> Jellyfin.refresh(Shelf.dir(), false));
+        }
     }
 
     @Override
