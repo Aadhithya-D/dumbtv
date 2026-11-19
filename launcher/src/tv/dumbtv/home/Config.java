@@ -123,10 +123,6 @@ final class Config {
             new String[] {"off", "visit", "15s", "30s", "1m", "5m", "15m", "hourly", "daily", "daytime"},
             new String[] {"Off", "Every return home", "Every 15 seconds", "Every 30 seconds", "Every minute", "Every 5 minutes", "Every 15 minutes", "Every hour", "Every day", "By time of day"});
 
-    static final Choice SAVER = new Choice("saver", "Ambient screensaver", "60",
-            new String[] {"off", "30", "60", "120", "300"},
-            new String[] {"Off", "After 30 seconds", "After 1 minute", "After 2 minutes", "After 5 minutes"});
-
     /**
      * For a TV children use: hides Options and Settings and turns off the tile menu, so the home
      * screen only opens apps and inputs. Holding Menu for {@link Home#UNLOCK_MS} opens Options.
@@ -143,7 +139,7 @@ final class Config {
     /** The banner of hand-picked titles from {@link Library}; hidden anyway while it has none. */
     static final Choice LIBRARY = new Choice("library", "Library banner", "on",
             new String[] {"on", "off"}, new String[] {"Shown", "Hidden"});
-    static final Choice[] CHOICES = {ACCENT, TILES, LAYOUT, STYLE, COLUMNS, PEEK, GREETING, SHELF, POSITION, ORDER, ALL_APPS, LABELS, CLOCK, MEMORY, INPUTS, SWITCH, BACKGROUND, DIM, ROTATE, SAVER, LOCK, TILE_STYLE, CHIPS, LIBRARY};
+    static final Choice[] CHOICES = {ACCENT, TILES, LAYOUT, STYLE, COLUMNS, PEEK, GREETING, SHELF, POSITION, ORDER, ALL_APPS, LABELS, CLOCK, MEMORY, INPUTS, SWITCH, BACKGROUND, DIM, ROTATE, LOCK, TILE_STYLE, CHIPS, LIBRARY};
 
     /** Folder of wallpapers, next to home.conf, that Background › Image file rotates through. */
     static final String WALLPAPERS = "wallpapers";
