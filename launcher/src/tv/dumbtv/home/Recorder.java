@@ -191,9 +191,9 @@ public final class Recorder extends NotificationListenerService {
             e.watched = System.currentTimeMillis();
             // No link: MEDIA_URI is the stream itself (Hotstar's is a CDN address), not a page the
             // app can open, so OK on the card opens the app instead.
+            e.image = picture(meta);
+            // After the image: a Zee5 episode's link takes the show id from the image address.
             e.link = link(pkg, id, e.image);
-            e.image = web(text(meta, MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI,
-                    MediaMetadata.METADATA_KEY_ART_URI, MediaMetadata.METADATA_KEY_ALBUM_ART_URI));
             return e;
         }
 
@@ -210,21 +210,11 @@ public final class Recorder extends NotificationListenerService {
     }
 
     /**
-     * A link that opens the title itself, for apps whose ids say enough. Zee5: the episode id
-     * (0-1-…) and the show id inside its banner's address (resources/0-6-…) make the web link
-     * its app opens straight into the player; a film (0-0-…) needs only its own id. Others:
-     * null, and the card opens the app.
+     * A link that opens the title itself, for apps whose ids say enough: Zee5 (see {@link Zee5}).
+     * Others: null, and the card opens the app.
      */
     static String link(String pkg, String id, String image) {
-        if (id == null) return null;
-        if ("com.zee5.amazon".equals(pkg)) {
-            if (id.startsWith("0-0-")) return "https://www.zee5.com/movies/details/title/" + id;
-            if (id.startsWith("0-1-") && image != null) {
-                java.util.regex.Matcher m = java.util.regex.Pattern.compile("resources/(0-6-[0-9a-z]+)/").matcher(image);
-                if (m.find()) return "https://www.zee5.com/tv-shows/details/show/" + m.group(1) + "/episode/" + id;
-            }
-        }
-        return null;
+        return Zee5.PKG.equals(pkg) ? Zee5.link(id, image) : null;
     }
 
     /**
@@ -256,6 +246,19 @@ public final class Recorder extends NotificationListenerService {
 
     private static String web(String uri) {
         return uri != null && (uri.startsWith("http://") || uri.startsWith("https://")) ? uri : null;
+    }
+
+    /**
+     * The first picture address that names a file. Zee5 sometimes reports only the folder
+     * (…/resources/0-6-…/app_cover/), which its server answers with 400.
+     */
+    private static String picture(MediaMetadata m) {
+        for (String k : new String[] {MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI,
+                MediaMetadata.METADATA_KEY_ART_URI, MediaMetadata.METADATA_KEY_ALBUM_ART_URI}) {
+            String uri = web(text(m, k));
+            if (uri != null && !uri.endsWith("/")) return uri;
+        }
+        return null;
     }
 
     private static Bitmap art(MediaMetadata m) {

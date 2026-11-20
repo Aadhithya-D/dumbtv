@@ -171,15 +171,50 @@ final class Shelf {
         return priv;
     }
 
+    /**
+     * A Zee5 episode's card is its show's: the show's name as the title, the episode's beneath it.
+     * Network on the first episode of a show. Whether it changed {@code e}.
+     */
+    private static boolean named(Entry e) {
+        if (!Zee5.PKG.equals(e.pkg) || e.title == null) return false;
+        String name = Zee5.name(dir(), Zee5.show(e.link, e.image));
+        if (name == null || name.equals(e.title)) return false;
+        e.subtitle = e.title;
+        e.title = name;
+        return true;
+    }
+
     /** Gives saved titles without a picture one from TMDB. Network: not on the UI thread. */
     static void enrich() {
         List<Entry> missing = new ArrayList<>();
+        boolean renamed = false;
         synchronized (Shelf.class) {
             for (List<Entry> list : played.values()) {
                 for (Entry e : list) {
                     if (e.image == null || SunNxt.PKG.equals(e.pkg) && e.link == null) missing.add(e);
                 }
             }
+        }
+        // Zee5 cards saved with the episode's name: the network outside the lock, then the change in it.
+        List<Entry> zee5;
+        synchronized (Shelf.class) {
+            List<Entry> list = played.get(Zee5.PKG);
+            zee5 = list == null ? new ArrayList<>() : new ArrayList<>(list);
+        }
+        for (Entry e : zee5) {
+            String name = Zee5.name(dir(), Zee5.show(e.link, e.image));
+            if (name == null || name.equals(e.title)) continue;
+            synchronized (Shelf.class) {
+                e.subtitle = e.title;
+                e.title = name;
+            }
+            renamed = true;
+        }
+        if (renamed) {
+            synchronized (Shelf.class) {
+                save();
+            }
+            changed(Zee5.PKG);
         }
         boolean any = false;
         for (Entry e : missing) {
@@ -303,7 +338,7 @@ final class Shelf {
             for (Map<String, List<Entry>> lists : java.util.Arrays.asList(played, watching)) {
                 List<Entry> list = lists.get(e.pkg);
                 if (list == null) continue;
-                for (int i = list.size() - 1; i >= 0; i--) if (same(list.get(i), e)) list.remove(i);
+                for (int i = list.size() - 1; i >= 0; i--) if (samePlayed(list.get(i), e)) list.remove(i);
             }
             save();
         }
@@ -328,16 +363,18 @@ final class Shelf {
         // so this runs on the Recorder's own thread; answers are cached).
         // Sun NXT: its own id (a link straight to the title) and its own cover, by title.
         if (e.link == null) SunNxt.enrich(dir(), e);
+        named(e);
         if (e.image == null) e.image = Tmdb.backdrop(dir(), e.title);
-        image(e);
+        boolean pictured = image(e) != null;
         synchronized (Shelf.class) {
             List<Entry> list = played.get(e.pkg);
             if (list == null) played.put(e.pkg, list = new ArrayList<>());
             for (int i = list.size() - 1; i >= 0; i--) {
                 Entry old = list.get(i);
-                if (!same(old, e)) continue;
-                // A later update without a picture keeps the one already saved.
-                if (e.image == null) e.image = old.image;
+                if (!samePlayed(old, e)) continue;
+                // A later update without a picture, or with one that would not download (another
+                // episode of the same show), keeps the one already saved.
+                if (e.image == null || !pictured && saved(old)) e.image = old.image;
                 list.remove(i);
             }
             list.add(0, e);
@@ -355,6 +392,34 @@ final class Shelf {
     static synchronized boolean pinned(Entry e) {
         for (Entry p : pins) if (same(p, e)) return true;
         return false;
+    }
+
+    /**
+     * One card on Recently watched: the same title, or for Zee5 any episode of the same show, so
+     * the show's card is its latest episode and opens that.
+     */
+    static boolean samePlayed(Entry a, Entry b) {
+        if (!a.pkg.equals(b.pkg)) return false;
+        if (Zee5.PKG.equals(a.pkg)) {
+            String x = Zee5.show(a.link, a.image), y = Zee5.show(b.link, b.image);
+            if (x != null && y != null) return x.equals(y);
+        }
+        return a.title.equals(b.title);
+    }
+
+    /** Recently watched newest first, one card per {@link #samePlayed} (lists saved before that). */
+    static boolean dedupePlayed(List<Entry> list) {
+        boolean any = false;
+        for (int i = 0; i < list.size(); i++) {
+            for (int j = list.size() - 1; j > i; j--) {
+                if (samePlayed(list.get(i), list.get(j))) {
+                    Entry newer = list.get(i), older = list.remove(j);
+                    if (!saved(newer) && saved(older)) newer.image = older.image;
+                    any = true;
+                }
+            }
+        }
+        return any;
     }
 
     /** Apps give a title a new opaque id each time, so a pin is matched by app and title. */
@@ -375,6 +440,13 @@ final class Shelf {
         if (on) pins.add(e);
         save();
         changed(e.pkg);
+    }
+
+    /** Whether {@code e}'s picture is already saved on the TV; never downloads. */
+    static boolean saved(Entry e) {
+        if (e.image == null || dir == null) return false;
+        if (e.image.startsWith("file:")) return new File(e.image.substring(5)).length() > 0;
+        return new File(new File(dir, "shelf-img"), Integer.toHexString(e.image.hashCode()) + ".jpg").length() > 0;
     }
 
     /** The saved picture for {@code e}, downloading it first if needed; null when offline. Not on the UI thread. */
@@ -574,6 +646,16 @@ final class Shelf {
         // never the pins after it.
         lists(root.optJSONObject("watching"), watching);
         lists(root.optJSONObject("played"), played);
+        for (List<Entry> list : played.values()) {
+            list.sort((x, y) -> Long.compare(y.watched, x.watched));
+            dedupePlayed(list);
+            // Zee5 cards saved before episodes opened their show's page (or with no link at all).
+            for (Entry e : list) {
+                if (!Zee5.PKG.equals(e.pkg)) continue;
+                String link = Zee5.link(e.id, e.image);
+                if (link != null) e.link = link;
+            }
+        }
         JSONArray p = root.optJSONArray("pins");
         for (int i = 0; p != null && i < p.length(); i++) {
             try {
